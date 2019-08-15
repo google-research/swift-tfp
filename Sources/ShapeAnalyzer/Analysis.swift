@@ -86,7 +86,7 @@ func parse(_ constraintValues: [Value], arguments: [Argument], result: Operand) 
       guard rank >= 0 else {
         throw ConstraintParseError.negativeDimLiteral(constraint)
       }
-      let shapeExpr = ShapeExpr.literal((0..<rank).map{ .dim(lookupDim(Int($0), of: register)) })
+      let shapeExpr = ShapeExpr.literal((0..<rank).map{ .variable(lookupDim(Int($0), of: register)) })
       constraints.append(.shapeEqual(lookupShape(of: register), shapeExpr))
 
     // x.shape == y.shape
@@ -96,7 +96,7 @@ func parse(_ constraintValues: [Value], arguments: [Argument], result: Operand) 
       }
       let lhsVar = lookupShape(of: lhsRegister)
       let rhsVar = lookupShape(of: rhsRegister)
-      constraints.append(.shapeEqual(lhsVar, .shape(rhsVar)))
+      constraints.append(.shapeEqual(lhsVar, .variable(rhsVar)))
 
     // x.shape[0] == 2
     // x.shape[0] == y.shape[1]
@@ -110,7 +110,7 @@ func parse(_ constraintValues: [Value], arguments: [Argument], result: Operand) 
         }
         rhsExpr = .literal(Int(value))
       case let .dim(rhsOffset, of: rhsRegister):
-        rhsExpr = .dim(lookupDim(rhsOffset, of: rhsRegister))
+        rhsExpr = .variable(lookupDim(rhsOffset, of: rhsRegister))
       default:
         throw ConstraintParseError.unsupportedKind(constraint)
       }

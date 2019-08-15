@@ -8,12 +8,12 @@ struct ShapeVar {
 }
 
 enum ShapeExpr {
-  case shape(_ shape: ShapeVar)
+  case variable(_ shape: ShapeVar)
   case literal(_ dims: [DimExpr])
 }
 
 enum DimExpr {
-  case dim(_ dim: DimVar)
+  case variable(_ dim: DimVar)
   case literal(_ value: Int)
 }
 
