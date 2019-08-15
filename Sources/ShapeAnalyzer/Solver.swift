@@ -18,7 +18,6 @@ enum DimExpr {
 }
 
 enum Constraint {
-  case rankEqual(_ shape: ShapeVar, _ rank: Int)
   case shapeEqual(_ variable: ShapeVar, _ expr: ShapeExpr)
   case dimEqual(_ variable: DimVar, _ expr: DimExpr)
   case shapeMember(_ shape: ShapeVar, _ dim: DimVar, _ offset: Int)

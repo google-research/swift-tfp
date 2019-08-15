@@ -1,5 +1,7 @@
 import SIL
 
+typealias Register = String
+
 enum BuiltinFunction {
   case check
   case rankGetter

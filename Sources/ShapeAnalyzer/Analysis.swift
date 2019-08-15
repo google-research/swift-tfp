@@ -1,15 +1,14 @@
 import SIL
 
-typealias Register = String
+struct FunctionSummary {
+  // NB: Can be nil if the argument or return is not a tensor,
+  //     or wasn't used in any constraint.
+  let argVars: [ShapeVar?]
+  let retVar: ShapeVar?
+  let constraints: [Constraint]
+}
 
 struct Analyzer {
-  struct FunctionSummary {
-    // NB: Can be nil if the argument or return is not a tensor,
-    //     or wasn't used in any constraint.
-    let argVars: [ShapeVar?]
-    let retVars: [ShapeVar?]
-    let constraints: [Constraint]
-  }
 
   func analyze(module: Module) {
     for f in module.functions {
@@ -21,8 +20,23 @@ struct Analyzer {
     guard function.blocks.count == 1 else { return }
     print("\n\n")
     print("Analyzing " + function.name)
-    let constraints = gatherConstraints(block: function.blocks[0])
-    print(parse(constraints))
+    analyze(block: function.blocks[0])
+  }
+
+  func analyze(block: Block) {
+    guard block.instructionDefs.count > 0 else { fatalError("Empty block??") }
+    let constraints = gatherConstraints(block: block)
+    let result: Operand
+    switch block.instructionDefs.last!.instruction {
+    case let .return(operand):
+      result = operand
+    default:
+      return
+    }
+    let summary = parse(constraints,
+                        arguments: block.arguments,
+                        result: result)
+    print(summary)
   }
 }
 
@@ -36,8 +50,7 @@ struct DimSpec : Hashable {
   let offset: Int
 }
 
-// TODO: Change the result to function summary
-func parse(_ constraintValues: [Value]) -> [Constraint] {
+func parse(_ constraintValues: [Value], arguments: [Argument], result: Operand) -> FunctionSummary {
   var constraints: [Constraint] = []
   var shapeVars: [Register: ShapeVar] = [:]
   var dimVars: [DimSpec: DimVar] = [:]
@@ -73,12 +86,8 @@ func parse(_ constraintValues: [Value]) -> [Constraint] {
       guard rank >= 0 else {
         throw ConstraintParseError.negativeDimLiteral(constraint)
       }
-      constraints.append(.rankEqual(lookupShape(of: register), Int(rank)))
-      // We try to preallocate the dim variables to make their identifiers similar
-      // XXX: Remove this and make identifiers more readable anyway...
-      for dim in 0..<rank {
-        let _ = lookupDim(Int(dim), of: register)
-      }
+      let shapeExpr = ShapeExpr.literal((0..<rank).map{ .dim(lookupDim(Int($0), of: register)) })
+      constraints.append(.shapeEqual(lookupShape(of: register), shapeExpr))
 
     // x.shape == y.shape
     case let .shape(of: lhsRegister):
@@ -126,5 +135,15 @@ func parse(_ constraintValues: [Value]) -> [Constraint] {
     } catch {}
   }
 
-  return constraints
+  func isTensorType(_ type: Type) -> Bool {
+    // TODO: fix once Type supports Equatable
+    switch type {
+    case .namedType("Tensor"): return true
+    default: return false
+    }
+  }
+
+  return FunctionSummary(argVars: arguments.map{ isTensorType($0.type) ? lookupShape(of: $0.valueName) : nil },
+                         retVar: isTensorType(result.type) ? lookupShape(of: result.value) : nil,
+                         constraints: constraints)
 }
