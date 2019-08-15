@@ -1,7 +1,7 @@
 import XCTest
 
-import ShapeAnalyzerTests
+import ShapeCheckerTests
 
 var tests = [XCTestCaseEntry]()
-tests += ShapeAnalyzerTests.allTests()
+tests += ShapeCheckerTests.allTests()
 XCTMain(tests)

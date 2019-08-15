@@ -4,7 +4,7 @@
 import PackageDescription
 
 let package = Package(
-    name: "ShapeAnalyzer",
+    name: "ShapeChecker",
     dependencies: [
          .package(url: "/Users/apaszke/libsil", .branch("improvements")),
          // FIXME: We need this for command-line argument parsing only.
@@ -14,12 +14,12 @@ let package = Package(
         // Targets are the basic building blocks of a package. A target can define a module or a test suite.
         // Targets can depend on other targets in this package, and on products in packages which this package depends on.
         .target(
-            name: "ShapeAnalyzer",
+            name: "ShapeChecker",
             dependencies: [
               "SIL",
               "SPMUtility"]),
         .testTarget(
-            name: "ShapeAnalyzerTests",
-            dependencies: ["ShapeAnalyzer"]),
+            name: "ShapeCheckerTests",
+            dependencies: ["ShapeChecker"]),
     ]
 )
