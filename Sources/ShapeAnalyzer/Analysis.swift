@@ -18,7 +18,7 @@ struct Analyzer {
 
   func analyze(function: Function) {
     guard function.blocks.count == 1 else { return }
-    print("\n\n")
+    print("")
     print("Analyzing " + function.name)
     analyze(block: function.blocks[0])
   }
@@ -36,7 +36,7 @@ struct Analyzer {
     let summary = parse(constraints,
                         arguments: block.arguments,
                         result: result)
-    print(summary)
+    print(summary.prettyDescription)
   }
 }
 
@@ -59,7 +59,8 @@ func parse(_ constraintValues: [Value], arguments: [Argument], result: Operand) 
   var sc = 0
   func freshShapeVar() -> ShapeVar { sc += 1; return ShapeVar(name: sc) }
   func lookupShape(of reg: Register) -> ShapeVar {
-    return shapeVars[reg, default: freshShapeVar()]
+    if shapeVars[reg] == nil { shapeVars[reg] = freshShapeVar() }
+    return shapeVars[reg]!
   }
 
   var dc = 0
@@ -70,7 +71,9 @@ func parse(_ constraintValues: [Value], arguments: [Argument], result: Operand) 
     return dv
   }
   func lookupDim(_ offset: Int, of reg: Register) -> DimVar {
-    return dimVars[DimSpec(reg: reg, offset: offset), default: freshDimVar(offset, of: reg)]
+    let spec = DimSpec(reg: reg, offset: offset)
+    if dimVars[spec] == nil { dimVars[spec] = freshDimVar(offset, of: reg) }
+    return dimVars[spec]!
   }
 
   func parseEqualityConstraint(_ constraint: Value, trySwapping: Bool = true) throws {
@@ -138,7 +141,7 @@ func parse(_ constraintValues: [Value], arguments: [Argument], result: Operand) 
   func isTensorType(_ type: Type) -> Bool {
     // TODO: fix once Type supports Equatable
     switch type {
-    case .namedType("Tensor"): return true
+    case .specializedType(.namedType("Tensor"), _): return true
     default: return false
     }
   }
@@ -146,4 +149,19 @@ func parse(_ constraintValues: [Value], arguments: [Argument], result: Operand) 
   return FunctionSummary(argVars: arguments.map{ isTensorType($0.type) ? lookupShape(of: $0.valueName) : nil },
                          retVar: isTensorType(result.type) ? lookupShape(of: result.value) : nil,
                          constraints: constraints)
+}
+
+extension FunctionSummary: CustomStringConvertible {
+  fileprivate func describeOptVar(_ v: ShapeVar?) -> String { v == nil ? "*" : v!.description }
+  fileprivate var signature: String {
+    "(" + argVars.map(describeOptVar).joined(separator: ", ") + ") -> " + describeOptVar(retVar)
+  }
+  var description: String {
+    guard !constraints.isEmpty else { return signature }
+    return constraints.description + " => " + signature
+  }
+  var prettyDescription: String {
+    guard constraints.count > 4 else { return description }
+    return "[" + constraints.map{ $0.description }.joined(separator: ",\n ") + "] => " + signature
+  }
 }

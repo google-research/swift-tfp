@@ -70,8 +70,6 @@ func gatherConstraints(block: Block) -> [Value] {
         updates = nil
         guard args.count == 1 else { fatalError("Check expects a single argument") }
         if let cond = valuation[args[0]] {
-          print("Found a check: ", terminator: "")
-          print(cond)
           constraints.append(cond)
         } else {
           print("Failed to recover a check!")
