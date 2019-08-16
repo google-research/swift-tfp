@@ -16,8 +16,14 @@ let package = Package(
         .target(
             name: "ShapeChecker",
             dependencies: [
+              "LibShapeChecker",
               "SIL",
               "SPMUtility"]),
+        .target(
+            name: "LibShapeChecker",
+            dependencies: [
+              "SIL",
+            ]),
         .testTarget(
             name: "ShapeCheckerTests",
             dependencies: ["ShapeChecker"]),

@@ -1,3 +1,4 @@
+import LibShapeChecker
 import SIL
 import SPMUtility
 

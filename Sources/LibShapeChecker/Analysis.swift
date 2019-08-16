@@ -10,10 +10,12 @@ struct FunctionSummary {
 
 typealias Environment = [String: FunctionSummary]
 
-class Analyzer {
+public class Analyzer {
   var environment: Environment = [:]
 
-  func analyze(module: Module) {
+  public init() {}
+
+  public func analyze(module: Module) {
     // TODO: Sort the functions according to the call chain.
     //       Right now the analysis result depends on their order,
     //       which shouldn't be the case!
