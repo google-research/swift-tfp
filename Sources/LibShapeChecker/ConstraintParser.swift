@@ -158,34 +158,3 @@ fileprivate class ConstraintParser {
   }
 }
 
-////////////////////////////////////////////////////////////////////////////////
-// MARK: - Utilities and helpers
-
-fileprivate func count(from: Int, by: Int = 1) -> (() -> Int) {
-  var current = from
-  let f = { () -> Int in
-    let r = current
-    current += by
-    return r
-  }
-  return f
-}
-
-fileprivate struct DefaultDict<K : Hashable, V> {
-  var dict: [K: V] = [:]
-  var defaultConstructor: (K) -> V
-
-  init(withDefault constructor: @escaping (K) -> V) {
-    self.defaultConstructor = constructor
-  }
-
-  subscript(_ key: K) -> V {
-    mutating get {
-      if dict[key] == nil { dict[key] = defaultConstructor(key) }
-      return dict[key]!
-    }
-    set(value) {
-      dict[key] = value
-    }
-  }
-}

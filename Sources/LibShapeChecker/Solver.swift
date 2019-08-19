@@ -1,120 +1,188 @@
-
-typealias VarName = Int
-
-// VarName + Type of the variable it refers to
-enum TypedVarName: Hashable {
-  case shape(_ name: VarName)
-  case dim(_ name: VarName)
+enum Inconsistency : Error {
+  case rankMismatch(prev: Int, now: Int)
+  case rankMismatch(prev: Int, nowAtLeast: Int)
+  case dimensionSizeMismatch(prev: Int, now: Int)
 }
 
-struct DimVar {
-  let name: VarName
+// We will sometimes want to allocate temporary variables to simplify the
+// implementation, and this is how we avoid clashes with names generated
+// by the rest of this program.
+enum TaggedDimVar: Hashable {
+  case regular(_ v: DimVar)
+  case temporary(_ t: DimVar)
 }
 
-struct ShapeVar {
-  let name: VarName
+
+enum DimValuation {
+  case exact(_ v: Int)
 }
 
-enum DimExpr {
-  case variable(_ dim: DimVar)
-  case literal(_ value: Int)
+enum ShapeValuation {
+  case knownRank(_ dims: [TaggedDimVar])
+  // NB: In the future this will be able to hold both positive and negative
+  //     indices. This means that once the rank will be recovered, we might
+  //     have to unify some of those variables.
+  case unstructured(_ dims: [Int: TaggedDimVar])
 }
 
-enum ShapeExpr {
-  case variable(_ shape: ShapeVar)
-  case literal(_ dims: [DimExpr])
-}
+struct Model {
+  // INVARIANT: shapes and dims only hold valuations for representatives of
+  //            classes present in their respective Equiv fields
+  private var _shapes: [ShapeVar: ShapeValuation] = [:]
+  private var _shapeEquiv = DefaultDict<ShapeVar, UnionFind<ShapeVar>>{ UnionFind($0) }
 
-enum Constraint {
-  case shapeEqual(_ variable: ShapeVar, _ expr: ShapeExpr)
-  case dimEqual(_ variable: DimVar, _ expr: DimExpr)
-  case shapeMember(_ shape: ShapeVar, _ dim: DimVar, _ offset: Int)
-}
+  private var _dims: [TaggedDimVar: DimValuation] = [:]
+  private var _dimEquiv = DefaultDict<TaggedDimVar, UnionFind<TaggedDimVar>>{ UnionFind($0) }
 
-////////////////////////////////////////////////////////////////////////////////
-// MARK: - Substitution support
+  private let nextTemporaryVar = count(from: 0) >>> DimVar.init >>> TaggedDimVar.temporary
 
-typealias Substitution = (TypedVarName) -> VarName
-
-func substitute(_ v: DimVar, using s: Substitution) -> DimVar {
-  return DimVar(name: s(.dim(v.name)))
-}
-
-func substitute(_ v: ShapeVar, using s: Substitution) -> ShapeVar {
-  return ShapeVar(name: s(.shape(v.name)))
-}
-
-func substitute(_ e: DimExpr, using s: Substitution) -> DimExpr {
-  switch e {
-  case let .variable(v):
-    return .variable(substitute(v, using: s))
-  case let .literal(l):
-    return .literal(l)
+  subscript(_ a: ShapeVar) -> ShapeValuation? {
+    mutating get { _shapeEquiv.contains(key: a) ? _shapes[representative(_shapeEquiv[a])] : nil }
+    set(val) { _shapes[representative(_shapeEquiv[a])] = val }
   }
-}
-
-func substitute(_ e: ShapeExpr, using s: Substitution) -> ShapeExpr {
-  switch e {
-  case let .variable(v):
-    return .variable(substitute(v, using: s))
-  case let .literal(l):
-    return .literal(l.map{ substitute($0, using: s) })
+  subscript(_ a: TaggedDimVar) -> DimValuation? {
+    mutating get { _dimEquiv.contains(key: a) ? _dims[representative(_dimEquiv[a])] : nil }
+    set(val) { _dims[representative(_dimEquiv[a])] = val }
   }
-}
 
-func substitute(_ c: Constraint, using s: Substitution) -> Constraint {
-  switch c {
-  case let .shapeEqual(v, e):
-    return .shapeEqual(substitute(v, using: s), substitute(e, using: s))
-  case let .dimEqual(v, e):
-    return .dimEqual(substitute(v, using: s), substitute(e, using: s))
-  case let .shapeMember(sv, dv, o):
-    return .shapeMember(substitute(sv, using: s), substitute(dv, using: s), o)
+  mutating func equate(_ aRaw: ShapeVar, _ bRaw: ShapeVar) throws {
+    let a = _shapeEquiv[aRaw]
+    let b = _shapeEquiv[bRaw]
+    guard let (parent: p, child: c) = union(a, b) else { return }
+    let pr = representative(p)
+    let cr = representative(c)
+    _shapes[pr] = try unify(_shapes[pr], _shapes[cr])
+    _shapes[cr] = nil
   }
-}
 
-////////////////////////////////////////////////////////////////////////////////
-// MARK: - CustomStringConvertible instances
+  mutating func equate(_ aRaw: TaggedDimVar, _ bRaw: TaggedDimVar) throws {
+    let a = _dimEquiv[aRaw]
+    let b = _dimEquiv[bRaw]
+    guard let (parent: p, child: c) = union(a, b) else { return }
+    let pr = representative(p)
+    let cr = representative(c)
+    _dims[pr] = try unify(_dims[pr], _dims[cr])
+    _dims[cr] = nil
+  }
 
-extension DimVar: CustomStringConvertible {
-  var description: String { "d" + String(name) }
-}
+  ////////////////////////////////////////////////////////////////////////////////
+  // XXX: No methods below this line should ever access any of the properties
+  //      prefixed with an underscore!
+  ////////////////////////////////////////////////////////////////////////////////
 
-extension ShapeVar: CustomStringConvertible {
-  var description: String { "s" + String(name) }
-}
-
-extension DimExpr: CustomStringConvertible {
-  var description: String {
-    switch self {
-    case let .variable(v):
-      return v.description
-    case let .literal(value):
-      return String(value)
+  // NB: While semantically this function is symmetric, the order of arguments
+  //     will have an effect on the error messages, so please be careful about it.
+  //     The general rule is that the first argument is supposed to be the previously
+  //     known fact, and the second one something we have learned just now.
+  func unify(_ ma: DimValuation?, _ mb: DimValuation?) throws -> DimValuation? {
+    guard let a = ma else { return mb }
+    guard let b = mb else { return ma }
+    switch (a, b) {
+    case let (.exact(va), .exact(vb)):
+      guard va == vb else {
+        throw Inconsistency.dimensionSizeMismatch(prev: va, now: vb)
+      }
+      return .exact(va)
     }
   }
-}
 
-extension ShapeExpr: CustomStringConvertible {
-  var description: String {
-    switch self {
-    case let .variable(v):
-      return v.description
-    case let .literal(exprs):
-      return "[" + exprs.map{ $0.description }.joined(separator: ", ") + "]"
+  // NB: See note about the argument order in unify for DimValuation
+  mutating func unify(_ ma: ShapeValuation?, _ mb: ShapeValuation?) throws -> ShapeValuation? {
+    guard let a = ma else { return mb }
+    guard let b = mb else { return ma }
+    switch (a, b) {
+    case let (.knownRank(aDims), .knownRank(bDims)):
+      guard aDims.count == bDims.count else {
+        throw Inconsistency.rankMismatch(prev: aDims.count, now: bDims.count)
+      }
+      try zip(aDims, bDims).forEach{ try equate($0, $1) }
+      return a
+    case let (.unstructured(dimMap), .knownRank(dims)):
+      let rank = dims.count
+      for (dimIdx, dimVar) in dimMap {
+        try equate(dimVar, dims[normalize(dimIdx, rank)])
+      }
+      return b
+    case let (.unstructured(aDimMap), .unstructured(bDimMap)):
+      return try .unstructured(
+        aDimMap.merging(bDimMap, uniquingKeysWith: { try equate($0, $1); return $0 }))
+    case (.knownRank(_), .unstructured(_)):
+      return try unify(mb, ma)
     }
+  }
+
+  mutating func restrict(with constraints: [Constraint]) throws {
+    for constraint in constraints {
+      switch constraint {
+      case let .shapeEqual(shape, expr):
+        switch expr {
+        case let .variable(otherShape):
+          try equate(shape, otherShape)
+        case let .literal(dimExprs):
+          self[shape] = try unify(self[shape], makeShapeValuation(self, dimExprs))
+        }
+
+      case let .dimEqual(dim, expr):
+        switch expr {
+        case let .variable(otherDim):
+          try equate(.regular(dim), .regular(otherDim))
+        case let .literal(value):
+          self[.regular(dim)] = try unify(self[.regular(dim)], .exact(value))
+        }
+
+      case let .shapeMember(shape, dim, dimIdx):
+        switch self[shape] {
+          case let .knownRank(dims):
+            guard dimInRange(dimIdx, dims) else {
+              throw Inconsistency.rankMismatch(prev: dims.count, nowAtLeast: minNeededRank(dimIdx))
+            }
+            try equate(dims[normalize(dimIdx, dims.count)], .regular(dim))
+          case let .unstructured(dimMap):
+            if let prevDim = dimMap[dimIdx] {
+              try equate(prevDim, .regular(dim))
+            } else {
+              self[shape] = .unstructured(dimMap + [dimIdx: .regular(dim)])
+            }
+          case .none:
+            self[shape] = .unstructured([dimIdx: .regular(dim)])
+        }
+      }
+    }
+  }
+
+  mutating func makeShapeValuation(_ model: Model, _ exprs: [DimExpr]) -> ShapeValuation {
+    return .knownRank(exprs.map{
+      switch $0 {
+      case let .variable(v):
+        return .regular(v)
+      case let .literal(value):
+        let tmpVar = nextTemporaryVar()
+        self[tmpVar] = .exact(value)
+        return tmpVar
+      }
+    })
   }
 }
 
-extension Constraint: CustomStringConvertible {
-  var description: String {
-    switch self {
-    case let .shapeEqual(v, expr):
-      return "\(v) = \(expr)"
-    case let .dimEqual(v, expr):
-      return "\(v) = \(expr)"
-    case let .shapeMember(sv, dv, offset):
-      return "\(sv)[\(offset)] = \(dv)"
-    }
+fileprivate extension Dictionary {
+  static func +(_ a: Dictionary<Key, Value>, _ b: Dictionary<Key, Value>) -> Dictionary<Key, Value> {
+    return a.merging(b, uniquingKeysWith: { _, _ in fatalError("Expected dictionaries to be disjoint!") })
   }
+}
+
+// TODO: make a Dimension newtype
+fileprivate func dimInRange(_ dim: Int, _ ndim : Int) -> Bool {
+  return dim < 0 ? dim >= -ndim : dim < ndim
+}
+
+fileprivate func dimInRange<T>(_ dim: Int, _ dims: [T]) -> Bool {
+  return dimInRange(dim, dims.count)
+}
+
+fileprivate func normalize(_ dim: Int, _ ndims : Int) -> Int {
+  return dim < 0 ? dim + ndims : dim
+}
+
+func minNeededRank(_ dim: Int) -> Int {
+  return dim < 0 ? -dim : dim + 1
 }
