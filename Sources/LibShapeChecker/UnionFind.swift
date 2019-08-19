@@ -38,3 +38,7 @@ func equivalent<T>(_ a: UnionFind<T>, _ b: UnionFind<T>) -> Bool {
 func representative<T>(_ a: UnionFind<T>) -> T {
   return find(a).value
 }
+
+func value<T>(_ a: UnionFind<T>) -> T {
+  return a.value
+}

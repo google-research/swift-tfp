@@ -1,4 +1,4 @@
-enum Inconsistency : Error {
+enum Inconsistency : Equatable, Error {
   case rankMismatch(prev: Int, now: Int)
   case rankMismatch(prev: Int, nowAtLeast: Int)
   case dimensionSizeMismatch(prev: Int, now: Int)
@@ -13,7 +13,7 @@ enum TaggedDimVar: Hashable {
 }
 
 
-enum DimValuation {
+enum DimValuation: Equatable {
   case exact(_ v: Int)
 }
 
@@ -37,11 +37,17 @@ struct Model {
   private let nextTemporaryVar = count(from: 0) >>> DimVar.init >>> TaggedDimVar.temporary
 
   subscript(_ a: ShapeVar) -> ShapeValuation? {
-    mutating get { _shapeEquiv.contains(key: a) ? _shapes[representative(_shapeEquiv[a])] : nil }
+    get {
+      guard let equiv = _shapeEquiv.lookup(a) else { return nil }
+      return _shapes[representative(equiv)]
+    }
     set(val) { _shapes[representative(_shapeEquiv[a])] = val }
   }
   subscript(_ a: TaggedDimVar) -> DimValuation? {
-    mutating get { _dimEquiv.contains(key: a) ? _dims[representative(_dimEquiv[a])] : nil }
+    get {
+      guard let equiv = _dimEquiv.lookup(a) else { return nil }
+      return _dims[representative(equiv)]
+    }
     set(val) { _dims[representative(_dimEquiv[a])] = val }
   }
 
@@ -49,8 +55,8 @@ struct Model {
     let a = _shapeEquiv[aRaw]
     let b = _shapeEquiv[bRaw]
     guard let (parent: p, child: c) = union(a, b) else { return }
-    let pr = representative(p)
-    let cr = representative(c)
+    let pr = value(p)
+    let cr = value(c)
     _shapes[pr] = try unify(_shapes[pr], _shapes[cr])
     _shapes[cr] = nil
   }
@@ -59,8 +65,8 @@ struct Model {
     let a = _dimEquiv[aRaw]
     let b = _dimEquiv[bRaw]
     guard let (parent: p, child: c) = union(a, b) else { return }
-    let pr = representative(p)
-    let cr = representative(c)
+    let pr = value(p)
+    let cr = value(c)
     _dims[pr] = try unify(_dims[pr], _dims[cr])
     _dims[cr] = nil
   }

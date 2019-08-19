@@ -43,7 +43,7 @@ struct DefaultDict<K : Hashable, V> {
     }
   }
 
-  func contains(key: K) -> Bool {
-    return dict[key] != nil
+  func lookup(_ key: K) -> V? {
+    return dict[key]
   }
 }
