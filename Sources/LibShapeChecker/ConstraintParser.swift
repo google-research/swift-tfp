@@ -37,6 +37,7 @@ fileprivate class ConstraintParser {
 
   let nextDimVarName = count(from: 1)
   var dimVars: DefaultDict<DimIndex, DimVar>!
+  var emitDimConstraints: Bool = true
   func lookupDim(_ offset: Int, of reg: Register) -> DimVar {
     return dimVars[DimIndex(offset, of: reg)]
   }
@@ -48,7 +49,9 @@ fileprivate class ConstraintParser {
     self.dimVars = DefaultDict<DimIndex, DimVar>{ [weak self] dimIdx in
       let dimVar = DimVar(name: self!.nextDimVarName())
       let shapeVar = self!.lookupShape(of: dimIdx.register)
-      self!.constraints.append(.shapeMember(shapeVar, dimVar, dimIdx.offset))
+      if self!.emitDimConstraints {
+        self!.constraints.append(.shapeMember(shapeVar, dimVar, dimIdx.offset))
+      }
       return dimVar
     }
   }
@@ -81,7 +84,13 @@ fileprivate class ConstraintParser {
       guard rank >= 0 else {
         throw Error.negativeDimLiteral(constraint)
       }
+      // NB: We temporarily forbid lookupDim from emitting .shapeMember constraints,
+      //     because those will be implied by the following .shapeEqual. While it
+      //     doesn't really matter to the Solver, it greatly improves readability
+      //     in case someone wants to inspect the generated constraints.
+      emitDimConstraints = false
       let shapeExpr = ShapeExpr.literal((0..<rank).map{ .variable(lookupDim(Int($0), of: register)) })
+      emitDimConstraints = true
       constraints.append(.shapeEqual(lookupShape(of: register), shapeExpr))
 
     // x.shape == y.shape

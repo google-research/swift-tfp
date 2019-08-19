@@ -76,15 +76,9 @@ you should see an output similar to this:
 ...
 
 Analyzing matmul
-[s1[0] = d1,
- s1[1] = d2,
- s1 = [d1, d2],
- s2[0] = d3,
- s2[1] = d4,
+[s1 = [d1, d2],
  s2 = [d3, d4],
  d2 = d3,
- s3[0] = d5,
- s3[1] = d6,
  s3 = [d5, d6],
  d5 = d1,
  d6 = d4] => (s1, s2) -> s3

@@ -13,14 +13,7 @@ final class AnalysisTests: XCTestCase {
         return XCTFail("Failed to find a summary for 'transpose'")
       }
       XCTAssertEqual(summary.prettyDescription, """
-      [s1[0] = d1,
-       s1[1] = d2,
-       s1 = [d1, d2],
-       s2[0] = d3,
-       s2[1] = d4,
-       s2 = [d3, d4],
-       d3 = d2,
-       d4 = d1] => (s1) -> s2
+      [s1 = [d1, d2], s2 = [d3, d4], d3 = d2, d4 = d1] => (s1) -> s2
       """)
     }
   }
