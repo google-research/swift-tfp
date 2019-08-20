@@ -149,12 +149,12 @@ fileprivate class ConstraintParser {
 
     // 1. Substituting the formal argument variables for the actual variables.
     assert(summary.argVars.count == args.count)
-    for (maybeArg, argReg) in zip(summary.argVars, args) {
+    for (maybeArgVar, argReg) in zip(summary.argVars, args) {
       // NB: Only instantiate the mapping for args that have some constraints
       //     associated with them.
-      guard maybeArg != nil else { continue }
-      let argName = lookupShape(of: argReg).name
-      substitution[.shape(argName)] = argName
+      guard let argVar = maybeArgVar else { continue }
+      let outerName = lookupShape(of: argReg).name
+      substitution[.shape(argVar.name)] = outerName
     }
 
     // 2. Replacing the variables in the body of the summary with fresh versions.
