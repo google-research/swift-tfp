@@ -1,17 +1,17 @@
 import SIL
 
-struct FunctionSummary {
+public struct FunctionSummary {
   // NB: Can be nil if the argument or return is not a tensor,
   //     or wasn't used in any constraint.
   let argVars: [ShapeVar?]
   let retVar: ShapeVar?
-  let constraints: [Constraint]
+  public let constraints: [Constraint]
 }
 
-typealias Environment = [String: FunctionSummary]
+public typealias Environment = [String: FunctionSummary]
 
 public class Analyzer {
-  var environment: Environment = [:]
+  public var environment: Environment = [:]
 
   public init() {}
 
@@ -26,13 +26,8 @@ public class Analyzer {
 
   func analyze(function: Function) {
     guard function.blocks.count == 1 else { return }
-    print("")
-    print("Analyzing " + function.name)
     let maybeSummary = analyze(block: function.blocks[0])
     environment[function.name] = maybeSummary
-    if let summary = maybeSummary {
-      print(summary.prettyDescription)
-    }
   }
 
   func analyze(block: Block) -> FunctionSummary? {
@@ -70,11 +65,11 @@ extension FunctionSummary: CustomStringConvertible {
   fileprivate var signature: String {
     "(" + argVars.map(describeOptVar).joined(separator: ", ") + ") -> " + describeOptVar(retVar)
   }
-  var description: String {
+  public var description: String {
     guard !constraints.isEmpty else { return signature }
     return constraints.description + " => " + signature
   }
-  var prettyDescription: String {
+  public var prettyDescription: String {
     guard constraints.count > 4 else { return description }
     return "[" + constraints.map{ $0.description }.joined(separator: ",\n ") + "] => " + signature
   }

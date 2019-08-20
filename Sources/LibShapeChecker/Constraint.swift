@@ -1,30 +1,30 @@
-typealias VarName = Int
+public typealias VarName = Int
 
 // VarName + Type of the variable it refers to
-enum TypedVarName: Hashable {
+public enum TypedVarName: Hashable {
   case shape(_ name: VarName)
   case dim(_ name: VarName)
 }
 
-struct DimVar: Hashable {
+public struct DimVar: Hashable {
   let name: VarName
 }
 
-struct ShapeVar: Hashable {
+public struct ShapeVar: Hashable {
   let name: VarName
 }
 
-enum DimExpr {
+public enum DimExpr {
   case variable(_ dim: DimVar)
   case literal(_ value: Int)
 }
 
-enum ShapeExpr {
+public enum ShapeExpr {
   case variable(_ shape: ShapeVar)
   case literal(_ dims: [DimExpr])
 }
 
-enum Constraint {
+public enum Constraint {
   case shapeEqual(_ variable: ShapeVar, _ expr: ShapeExpr)
   case dimEqual(_ variable: DimVar, _ expr: DimExpr)
   case shapeMember(_ shape: ShapeVar, _ dim: DimVar, _ offset: Int)
@@ -33,17 +33,17 @@ enum Constraint {
 ////////////////////////////////////////////////////////////////////////////////
 // MARK: - Substitution support
 
-typealias Substitution = (TypedVarName) -> VarName
+public typealias Substitution = (TypedVarName) -> VarName
 
-func substitute(_ v: DimVar, using s: Substitution) -> DimVar {
+public func substitute(_ v: DimVar, using s: Substitution) -> DimVar {
   return DimVar(name: s(.dim(v.name)))
 }
 
-func substitute(_ v: ShapeVar, using s: Substitution) -> ShapeVar {
+public func substitute(_ v: ShapeVar, using s: Substitution) -> ShapeVar {
   return ShapeVar(name: s(.shape(v.name)))
 }
 
-func substitute(_ e: DimExpr, using s: Substitution) -> DimExpr {
+public func substitute(_ e: DimExpr, using s: Substitution) -> DimExpr {
   switch e {
   case let .variable(v):
     return .variable(substitute(v, using: s))
@@ -52,7 +52,7 @@ func substitute(_ e: DimExpr, using s: Substitution) -> DimExpr {
   }
 }
 
-func substitute(_ e: ShapeExpr, using s: Substitution) -> ShapeExpr {
+public func substitute(_ e: ShapeExpr, using s: Substitution) -> ShapeExpr {
   switch e {
   case let .variable(v):
     return .variable(substitute(v, using: s))
@@ -61,7 +61,7 @@ func substitute(_ e: ShapeExpr, using s: Substitution) -> ShapeExpr {
   }
 }
 
-func substitute(_ c: Constraint, using s: Substitution) -> Constraint {
+public func substitute(_ c: Constraint, using s: Substitution) -> Constraint {
   switch c {
   case let .shapeEqual(v, e):
     return .shapeEqual(substitute(v, using: s), substitute(e, using: s))
@@ -76,15 +76,15 @@ func substitute(_ c: Constraint, using s: Substitution) -> Constraint {
 // MARK: - CustomStringConvertible instances
 
 extension DimVar: CustomStringConvertible {
-  var description: String { "d" + String(name) }
+  public var description: String { "d" + String(name) }
 }
 
 extension ShapeVar: CustomStringConvertible {
-  var description: String { "s" + String(name) }
+  public var description: String { "s" + String(name) }
 }
 
 extension DimExpr: CustomStringConvertible {
-  var description: String {
+  public var description: String {
     switch self {
     case let .variable(v):
       return v.description
@@ -95,7 +95,7 @@ extension DimExpr: CustomStringConvertible {
 }
 
 extension ShapeExpr: CustomStringConvertible {
-  var description: String {
+  public var description: String {
     switch self {
     case let .variable(v):
       return v.description
@@ -106,7 +106,7 @@ extension ShapeExpr: CustomStringConvertible {
 }
 
 extension Constraint: CustomStringConvertible {
-  var description: String {
+  public var description: String {
     switch self {
     case let .shapeEqual(v, expr):
       return "\(v) = \(expr)"

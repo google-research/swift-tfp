@@ -1,4 +1,4 @@
-enum Inconsistency : Equatable, Error {
+public enum Inconsistency : Equatable, Error {
   case rankMismatch(prev: Int, now: Int)
   case rankMismatch(prev: Int, nowAtLeast: Int)
   case dimensionSizeMismatch(prev: Int, now: Int)
@@ -25,7 +25,7 @@ enum ShapeValuation {
   case unstructured(_ dims: [Int: TaggedDimVar])
 }
 
-struct Model {
+public struct Model {
   // INVARIANT: shapes and dims only hold valuations for representatives of
   //            classes present in their respective Equiv fields
   private var _shapes: [ShapeVar: ShapeValuation] = [:]
@@ -70,6 +70,8 @@ struct Model {
     _dims[pr] = try unify(_dims[pr], _dims[cr])
     _dims[cr] = nil
   }
+
+  public init() {}
 
   ////////////////////////////////////////////////////////////////////////////////
   // XXX: No methods below this line should ever access any of the properties
@@ -117,7 +119,7 @@ struct Model {
     }
   }
 
-  mutating func restrict(with constraints: [Constraint]) throws {
+  public mutating func restrict(with constraints: [Constraint]) throws {
     for constraint in constraints {
       switch constraint {
       case let .shapeEqual(shape, expr):

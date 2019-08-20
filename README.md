@@ -75,20 +75,38 @@ you should see an output similar to this:
 ```
 ...
 
-Analyzing matmul
+matmul
 [s1 = [d1, d2],
  s2 = [d3, d4],
  d2 = d3,
  s3 = [d5, d6],
  d5 = d1,
  d6 = d4] => (s1, s2) -> s3
+Constraint check passed!
 
-...
+transpose
+[s1 = [d1, d2], s2 = [d3, d4], d3 = d2, d4 = d1] => (s1) -> s2
+Constraint check passed!
+
+verify
+[s1[0] = d1,
+ d1 = 2,
+ s1[1] = d2,
+ d2 = 3,
+ s1 = [d3, d4],
+ s1 = [d5, d6],
+ d4 = d5,
+ s2 = [d7, d8],
+ d7 = d3,
+ d8 = d6,
+ s2 = [d9, d10],
+ s3 = [d11, d12],
+ d11 = d10,
+ d12 = d9] => (s1) -> s3
+Found a shape error: dimensionSizeMismatch(prev: 3, now: 2)
 ```
 
 What you see here is a shape signature of the matmul function.
 The first part of the output is a list of shape constraints that are necessary for its correctness, and the `(s1, s2) -> s3` part describes that the variables `s1` and `s2` correspond to the shapes of two arguments, while `s3` corresponds to the output shape.
 
 > Tip: All shape variables have an `s` prefix, and all dimension variables have the `d` prefix.
-
-Note that the solver is not yet hooked up to the frontend, so no errors will be reported even if the constraint system is inconsistent.
