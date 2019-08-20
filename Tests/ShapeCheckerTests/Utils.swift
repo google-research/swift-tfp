@@ -15,6 +15,22 @@ func transpose(_ x: Tensor<Float>) -> Tensor<Float> {
 
 """
 
+let matmulCode = """
+
+@_silgen_name("matmul") @inline(never)
+func matmul(_ x: Tensor<Float>, _ y: Tensor<Float>) -> Tensor<Float> {
+  check(x.rank == 2)
+  check(y.rank == 2)
+  check(x.shape[1] == y.shape[0])
+  let r = TensorFlow.matmul(x, y)
+  check(r.rank == 2)
+  check(r.shape[0] == x.shape[0])
+  check(r.shape[1] == y.shape[1])
+  return r
+}
+
+"""
+
 extension XCTestCase {
   func getFunction(called name: String, _ module: Module) -> Function? {
     guard let f = module.functions.first(where: { $0.name == name }) else {
