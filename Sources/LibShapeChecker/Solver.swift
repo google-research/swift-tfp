@@ -19,9 +19,6 @@ enum DimValuation: Equatable {
 
 enum ShapeValuation {
   case knownRank(_ dims: [TaggedDimVar])
-  // NB: In the future this will be able to hold both positive and negative
-  //     indices. This means that once the rank will be recovered, we might
-  //     have to unify some of those variables.
   case unstructured(_ dims: [Int: TaggedDimVar])
 }
 
@@ -72,6 +69,13 @@ public struct Model {
   }
 
   public init() {}
+
+  // For testing purposes
+  func _areEquivalent(_ a: TaggedDimVar, _ b: TaggedDimVar) -> Bool {
+    guard let aEquiv = _dimEquiv.lookup(a) else { return false }
+    guard let bEquiv = _dimEquiv.lookup(b) else { return false }
+    return equivalent(aEquiv, bEquiv)
+  }
 
   ////////////////////////////////////////////////////////////////////////////////
   // XXX: No methods below this line should ever access any of the properties

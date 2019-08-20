@@ -65,6 +65,27 @@ final class SolverTests: XCTestCase {
     }
   }
 
+  func testNegativeDimIndices() {
+    withModel(for: [
+                .shapeMember(s1, d1, 2),
+                .shapeMember(s1, d2, -2),
+                .shapeEqual(s1, .variable(s2))
+              ]) { model in
+      XCTAssert(!model._areEquivalent(.regular(d1), .regular(d2)))
+      guard checkedRestrict(&model, with: .shapeEqual(s2, .literal([.variable(d3),
+                                                                    .variable(d4),
+                                                                    .variable(d5),
+                                                                    .variable(d6)]))) else { return }
+      XCTAssert(model._areEquivalent(.regular(d1), .regular(d2)))
+      guard checkedRestrict(&model, with: .shapeEqual(s2, .literal([.literal(1),
+                                                                    .literal(2),
+                                                                    .literal(3),
+                                                                    .literal(4)]))) else { return }
+      XCTAssertEqual(model[.regular(d1)], .exact(3))
+      XCTAssertEqual(model[.regular(d2)], .exact(3))
+    }
+  }
+
   func assert(inconsistency: Inconsistency,
               with allConstraints: [Constraint]) {
     var satisfiable = allConstraints
@@ -88,11 +109,21 @@ final class SolverTests: XCTestCase {
     XCTFail("Expected a constraint system to fail!")
   }
 
-  func withModel(for constraints: [Constraint], f: (Model) -> Void) {
+  func checkedRestrict(_ model: inout Model, with constraint: Constraint) -> Bool {
+    do {
+      try model.restrict(with: [constraint])
+    } catch {
+      XCTFail("Expected the restriction to succeed!")
+      return false
+    }
+    return true
+  }
+
+  func withModel(for constraints: [Constraint], f: (inout Model) -> Void) {
     do {
       var model = Model()
       try model.restrict(with: constraints)
-      f(model)
+      f(&model)
     } catch {
       XCTFail("Expected a model to be satisfiable!")
     }
