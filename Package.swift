@@ -6,7 +6,7 @@ import PackageDescription
 let package = Package(
     name: "ShapeChecker",
     dependencies: [
-         .package(url: "/Users/apaszke/libsil", .branch("improvements")),
+         .package(url: "https://github.com/tensorflow/swift", .branch("master")),
          // FIXME: We need this for command-line argument parsing only.
          .package(url: "https://github.com/apple/swift-package-manager.git", from: "0.1.0"),
     ],
