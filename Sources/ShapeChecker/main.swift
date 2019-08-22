@@ -28,20 +28,10 @@ func main() {
   let analyzer = Analyzer()
   analyzer.analyze(module: module)
   for (fn, signature) in analyzer.environment.sorted(by: { $0.0 < $1.0 }) {
+    guard !signature.constraints.isEmpty else { continue }
     print("")
     print(fn)
     print(signature.prettyDescription)
-    do {
-      var model = Model()
-      try model.restrict(with: signature.constraints)
-    } catch let error as Inconsistency {
-      print("Found a shape error: \(error)")
-      continue
-    } catch {
-      print("Unexpected error: \(error)")
-      continue
-    }
-    print("Constraint check passed!")
   }
 
 }

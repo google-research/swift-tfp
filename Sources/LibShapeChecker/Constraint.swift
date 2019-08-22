@@ -1,119 +1,146 @@
 public typealias VarName = Int
 
-// VarName + Type of the variable it refers to
-public enum TypedVarName: Hashable {
-  case shape(_ name: VarName)
-  case dim(_ name: VarName)
-}
-
-public struct DimVar: Hashable {
+// TODO: Should the Vars have the int/list sorts encoded on the type level?
+public struct Var {
   let name: VarName
+  init(_ name: VarName) { self.name = name }
 }
 
-public struct ShapeVar: Hashable {
-  let name: VarName
+public indirect enum IntExpr {
+  // NB: No variables on this level. All integral qualities are derived from
+  //     list expressions for now.
+  case literal(Int)
+  case length(of: ListExpr)
+  // TODO: Accept int expressions instead of literals only?
+  case element(Int, of: ListExpr)
+
+  case add(IntExpr, IntExpr)
 }
 
-public enum DimExpr {
-  case variable(_ dim: DimVar)
-  case literal(_ value: Int)
+public indirect enum ListExpr {
+  case `var`(Var)
 }
 
-public enum ShapeExpr {
-  case variable(_ shape: ShapeVar)
-  case literal(_ dims: [DimExpr])
+public enum BoolExpr {
+  case intEq(IntExpr, IntExpr)
+  case intGt(IntExpr, IntExpr)
+  case listEq(ListExpr, ListExpr)
 }
 
 public enum Constraint {
-  case shapeEqual(_ variable: ShapeVar, _ expr: ShapeExpr)
-  case dimEqual(_ variable: DimVar, _ expr: DimExpr)
-  case shapeMember(_ shape: ShapeVar, _ dim: DimVar, _ offset: Int)
+  case expr(BoolExpr)
+  case call(_ name: String, _ args: [Var?], _ result: Var?)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 // MARK: - Substitution support
 
-public typealias Substitution = (TypedVarName) -> VarName
+public typealias Substitution = (VarName) -> VarName
 
-public func substitute(_ v: DimVar, using s: Substitution) -> DimVar {
-  return DimVar(name: s(.dim(v.name)))
+public func substitute(_ v: Var, using s: Substitution) -> Var {
+  return Var(s(v.name))
 }
 
-public func substitute(_ v: ShapeVar, using s: Substitution) -> ShapeVar {
-  return ShapeVar(name: s(.shape(v.name)))
-}
-
-public func substitute(_ e: DimExpr, using s: Substitution) -> DimExpr {
+public func substitute(_ e: IntExpr, using s: Substitution) -> IntExpr {
   switch e {
-  case let .variable(v):
-    return .variable(substitute(v, using: s))
-  case let .literal(l):
-    return .literal(l)
+  case let .literal(v):
+    return .literal(v)
+  case let .length(of: expr):
+    return .length(of: substitute(expr, using: s))
+  case let .element(offset, of: expr):
+    return .element(offset, of: substitute(expr, using: s))
+  case let .add(lhs, rhs):
+    return .add(substitute(lhs, using: s), substitute(rhs, using: s))
   }
 }
 
-public func substitute(_ e: ShapeExpr, using s: Substitution) -> ShapeExpr {
+public func substitute(_ e: ListExpr, using s: Substitution) -> ListExpr {
   switch e {
-  case let .variable(v):
-    return .variable(substitute(v, using: s))
-  case let .literal(l):
-    return .literal(l.map{ substitute($0, using: s) })
+  case let .var(v):
+    return .var(substitute(v, using: s))
+  }
+}
+
+public func substitute(_ e: BoolExpr, using s: Substitution) -> BoolExpr {
+  switch e {
+  case let .intEq(lhs, rhs):
+    return .intEq(substitute(lhs, using: s), substitute(rhs, using: s))
+  case let .intGt(lhs, rhs):
+    return .intGt(substitute(lhs, using: s), substitute(rhs, using: s))
+  case let .listEq(lhs, rhs):
+    return .listEq(substitute(lhs, using: s), substitute(rhs, using: s))
   }
 }
 
 public func substitute(_ c: Constraint, using s: Substitution) -> Constraint {
   switch c {
-  case let .shapeEqual(v, e):
-    return .shapeEqual(substitute(v, using: s), substitute(e, using: s))
-  case let .dimEqual(v, e):
-    return .dimEqual(substitute(v, using: s), substitute(e, using: s))
-  case let .shapeMember(sv, dv, o):
-    return .shapeMember(substitute(sv, using: s), substitute(dv, using: s), o)
+  case let .expr(expr):
+    return .expr(substitute(expr, using: s))
+  case let .call(name, args, result):
+    return .call(name, args.map{ $0.map{ substitute($0, using: s) } }, result.map{ substitute($0, using: s) })
   }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 // MARK: - CustomStringConvertible instances
 
-extension DimVar: CustomStringConvertible {
-  public var description: String { "d" + String(name) }
-}
-
-extension ShapeVar: CustomStringConvertible {
+extension Var: CustomStringConvertible {
   public var description: String { "s" + String(name) }
 }
 
-extension DimExpr: CustomStringConvertible {
+extension IntExpr: CustomStringConvertible {
   public var description: String {
     switch self {
-    case let .variable(v):
-      return v.description
-    case let .literal(value):
-      return String(value)
+    case let .literal(v):
+      return String(v)
+    case let .length(of: expr):
+      return "\(expr).rank"
+    case let .element(offset, of: expr):
+      return "\(expr).shape[\(offset)]"
+    case let .add(lhs, rhs):
+      return "\(lhs) + \(rhs)"
     }
   }
 }
 
-extension ShapeExpr: CustomStringConvertible {
+extension ListExpr: CustomStringConvertible {
   public var description: String {
     switch self {
-    case let .variable(v):
+    case let .var(v):
       return v.description
-    case let .literal(exprs):
-      return "[" + exprs.map{ $0.description }.joined(separator: ", ") + "]"
     }
   }
+}
+
+extension BoolExpr: CustomStringConvertible {
+  public var description: String {
+    switch self {
+    case let .intEq(lhs, rhs):
+      return "\(lhs) == \(rhs)"
+    case let .intGt(lhs, rhs):
+      return "\(lhs) > \(rhs)"
+    case let .listEq(lhs, rhs):
+      return "\(lhs) == \(rhs)"
+    }
+  }
+}
+
+extension Optional: CustomStringConvertible where Wrapped == Var {
+  public var description: String { self == nil ? "*" : self!.description }
 }
 
 extension Constraint: CustomStringConvertible {
   public var description: String {
     switch self {
-    case let .shapeEqual(v, expr):
-      return "\(v) = \(expr)"
-    case let .dimEqual(v, expr):
-      return "\(v) = \(expr)"
-    case let .shapeMember(sv, dv, offset):
-      return "\(sv)[\(offset)] = \(dv)"
+    case let .expr(expr):
+      return expr.description
+    case let .call(name, maybeArgs, maybeRet):
+      let argsDesc = maybeArgs.map{ $0.description }.joined(separator: ", ")
+      if let ret = maybeRet {
+        return "\(ret) = \(name)(\(argsDesc))"
+      } else {
+        return "\(name)(\(argsDesc))"
+      }
     }
   }
 }

@@ -8,6 +8,11 @@ precedencegroup FunctionComposition {
   associativity: left
 }
 
+/*@inlinable*/
+/*func >>><A, B, C>(_ f: @escaping (A) -> B, _ h: @escaping (B) -> C) -> (A) -> C {*/
+  /*return { h(f($0)) }*/
+/*}*/
+
 @inlinable
 func >>><B, C>(_ f: @escaping () -> B, _ h: @escaping (B) -> C) -> () -> C {
   return { h(f()) }
