@@ -23,6 +23,14 @@ let package = Package(
             name: "LibShapeChecker",
             dependencies: [
               "SIL",
+              "libz3",
+            ]),
+        .systemLibrary(
+            name: "libz3",
+            pkgConfig: "z3",
+            providers: [
+                .brew(["z3"]),
+                .apt(["libz3-dev"])
             ]),
         .testTarget(
             name: "ShapeCheckerTests",

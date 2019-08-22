@@ -1,0 +1,4 @@
+module libz3 [system] {
+    umbrella header "z3.h"
+    link "z3"
+}
