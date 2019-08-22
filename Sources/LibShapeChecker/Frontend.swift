@@ -11,8 +11,7 @@ enum BuiltinFunction {
 
 func abstract(_ block: Block) -> FunctionSummary? {
   guard block.instructionDefs.count > 0 else { fatalError("Empty block??") }
-  let interpreter = Interpreter()
-  interpreter.process(block)
+  let interpreter = Interpreter(block)
   let result: Register
   switch block.instructionDefs.last!.instruction {
   case let .return(operand):
@@ -26,6 +25,7 @@ func abstract(_ block: Block) -> FunctionSummary? {
                          constraints: interpreter.constraints)
 }
 
+// This class is really a poor man's state monad
 fileprivate class Interpreter {
   indirect enum AbstractValue {
     case int(IntExpr)
@@ -39,15 +39,17 @@ fileprivate class Interpreter {
   var constraints: [Constraint] = []
   var variables: DefaultDict<Register, Var>!
   var valuation: [Register: AbstractValue] = [:]
+  var instructions: Array<InstructionDef>.Iterator
   let nextVar = count(from: 0) >>> Var.init
 
-  init() {
+  init(_ block: Block) {
+    self.instructions = block.instructionDefs.makeIterator()
     self.variables = DefaultDict{ [weak self] _ in self!.nextVar() }
+    process(block)
   }
 
   func process(_ block: Block) {
-    // TODO: make it into an iterator
-    for instrDef in block.instructionDefs {
+    while let instrDef = instructions.next() {
       var updates: [AbstractValue?]?
 
       switch instrDef.instruction {
@@ -69,8 +71,12 @@ fileprivate class Interpreter {
         }
 
       // NB: Shape accessors are implemented as coroutines.
-      // FIXME: Assert that the next instruction is end_apply
       case let .beginApply(_, fn, _, args, fnType):
+          // Eyeballing the generated code indicates that in the cases we care about
+          // begin_apply should be followed immediately by an end_apply.
+          guard case .endApply(_) = instructions.next()?.instruction else {
+            break
+          }
           fallthrough
       case let .apply(_, fn, _, args, fnType):
         switch valuation[fn] {
