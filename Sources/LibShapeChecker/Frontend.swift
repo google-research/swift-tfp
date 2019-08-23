@@ -7,6 +7,7 @@ enum BuiltinFunction {
   case rankGetter
   case shapeGetter
   case shapeSubscript
+  case shapeEqual
 }
 
 func abstract(_ block: Block) -> FunctionSummary? {
@@ -169,6 +170,18 @@ fileprivate class Interpreter {
       constraints.append(.expr(.intGt(.length(of: shape), .literal(dim))))
       // NB: We need to have two returns, because the second one is a coroutine token
       return [.int(.element(dim, of: shape)), nil]
+    case .shapeEqual:
+      // NB: Third argument is the metatype
+      guard args.count == 3 else {
+        fatalError("Shape equality expected three arguments")
+      }
+      let values = args.compactMap{ valuation[$0] }
+      guard values.count == 2 else { return nil }
+      guard case let .list(a) = values[0],
+            case let .list(b) = values[1] else {
+        fatalError("Expected shape arguments to shape equality operator!")
+      }
+      return [.bool(.listEq(a, b))]
     case .check:
       guard args.count == 1 else {
         fatalError("Check expects a single argument")
@@ -198,6 +211,8 @@ fileprivate func getBuiltinFunctionRef(called name: String) -> BuiltinFunction? 
       return .shapeSubscript
     case "$s10TensorFlow0A0V4rankSivg":
       return .rankGetter
+    case "$s10TensorFlow0A5ShapeV2eeoiySbAC_ACtFZ":
+      return .shapeEqual
     default:
       return nil
   }

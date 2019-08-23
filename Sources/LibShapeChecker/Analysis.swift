@@ -52,14 +52,14 @@ class ConstraintInstantiator {
   var constraints: [Constraint] = []
   var callStack = Set<String>() // To sure we don't recurse
 
-  let freshVar = count(from: 1) >>> Var.init
+  let freshVar = count(from: 0) >>> Var.init
 
 
   init(_ name: String,
        _ env: Environment) {
     self.environment = env
     guard let summary = environment[name] else { return }
-    let _ = apply(name, to: summary.argVars)
+    let _ = apply(name, to: summary.argVars.map{ $0.map { _ in freshVar() } })
   }
 
   func apply(_ name: String, to args: [Var?]) -> Var? {

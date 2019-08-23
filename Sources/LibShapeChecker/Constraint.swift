@@ -1,33 +1,34 @@
 public typealias VarName = Int
 
-// TODO: Should the Vars have the int/list sorts encoded on the type level?
 public struct Var: Hashable {
   let name: VarName
   init(_ name: VarName) { self.name = name }
 }
 
-public indirect enum IntExpr {
+public indirect enum IntExpr: Equatable {
   // NB: No variables on this level. All integral qualities are derived from
   //     list expressions for now.
   case literal(Int)
   case length(of: ListExpr)
   // TODO: Accept int expressions instead of literals only?
+  // FIXME: Verify that this is a positive expression, because our
+  //        current encoding does not play well with negative dim indices.
   case element(Int, of: ListExpr)
 
   case add(IntExpr, IntExpr)
 }
 
-public indirect enum ListExpr {
+public indirect enum ListExpr: Equatable {
   case `var`(Var)
 }
 
-public enum BoolExpr {
+public enum BoolExpr: Equatable {
   case intEq(IntExpr, IntExpr)
   case intGt(IntExpr, IntExpr)
   case listEq(ListExpr, ListExpr)
 }
 
-public enum Constraint {
+public enum Constraint: Equatable {
   case expr(BoolExpr)
   case call(_ name: String, _ args: [Var?], _ result: Var?)
 }

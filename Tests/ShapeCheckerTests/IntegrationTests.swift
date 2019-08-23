@@ -17,22 +17,14 @@ final class IntegrationTests: XCTestCase {
       let analyzer = Analyzer()
       analyzer.analyze(module: module)
 
-      guard let signature = analyzer.environment["f"] else {
-        return XCTFail("Couldn't find a signature for f!")
+      let constraints = instantiate(constraintsOf: "f", inside: analyzer.environment)
+      guard !constraints.isEmpty else {
+        return XCTFail("Failed to instantiate constraints for 'f'")
       }
 
-      var model = Model()
-      do {
-        try model.restrict(with: signature.constraints)
-      } catch Inconsistency.dimensionSizeMismatch(prev: 3, now: 2) {
-        return
-      } catch {
-        return XCTFail("Found a wrong inconsistency: \(error)")
-      }
-      XCTFail("Expected the model to be inconsistent")
+      XCTAssertEqual(verify(constraints), false)
     }
   }
-
 
   static var allTests = [
     ("testMatmulSingleArg", testMatmulSingleArg),

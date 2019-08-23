@@ -27,7 +27,7 @@ extension IntExpr {
       switch list {
       case let .var(v):
         let listVar = Z3Context.default.make(listVariable: "\(v)")
-        return listVar(Z3Context.default.literal(offset))
+        return listVar.call(Z3Context.default.literal(offset))
       }
     case let .add(lhs, rhs):
       return lhs.solverAST + rhs.solverAST
@@ -42,8 +42,14 @@ extension BoolExpr {
       return lhs.solverAST == rhs.solverAST
     case let .intGt(lhs, rhs):
       return lhs.solverAST > rhs.solverAST
-    case let .listEq(lhs, rhs):
-      return lhs.solverAST == rhs.solverAST
+    case .listEq(_, _):
+      // FIXME: <sigh> Z3 does not allow us to say (= s0 s1), so we
+      //        will either need to insert something akin to
+      //        (forall ((x Int)) (= (lhs x) (rhs x))), but that
+      //        may be slow, so we might just need to preprocess the
+      //        function equalities e.g. at instantiation time, and simply
+      //        use a single variable for all of them...
+      fatalError("Shape equality is not implemented yet!")
     }
   }
 }

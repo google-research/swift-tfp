@@ -152,16 +152,16 @@ func /(_ a: Z3Expr<Int>, _ b: Z3Expr<Int>) -> Z3Expr<Int> {
   return binaryOp(a, b, Z3_mk_div)
 }
 
-func ==<A>(_ a: Z3Expr<A>, _ b: Z3Expr<A>) -> Z3Expr<Bool> {
+func ==(_ a: Z3Expr<Int>, _ b: Z3Expr<Int>) -> Z3Expr<Bool> {
   return binaryOp(a, b, Z3_mk_eq)
 }
 
-func ><A>(_ a: Z3Expr<A>, _ b: Z3Expr<A>) -> Z3Expr<Bool> {
+func >(_ a: Z3Expr<Int>, _ b: Z3Expr<Int>) -> Z3Expr<Bool> {
   return binaryOp(a, b, Z3_mk_gt)
 }
 
 extension Z3Expr where T == [Int] {
-  func callAsFunction(_ arg: Z3Expr<Int>) -> Z3Expr<Int> {
+  func call(_ arg: Z3Expr<Int>) -> Z3Expr<Int> {
     return Z3Expr<Int>(ctx, Z3_mk_app(ctx.ctx, Z3_to_func_decl(ctx.ctx, ast), 1, [arg.ast]))
   }
 }
