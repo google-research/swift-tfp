@@ -2,6 +2,7 @@ import libz3
 
 class Z3Context {
   var ctx: Z3_context
+  let intSort: Z3_sort
 
   init() {
     var config: Z3_config = Z3_mk_config()
@@ -10,6 +11,7 @@ class Z3Context {
     Z3_set_param_value(config, "model", "true");
     Z3_set_param_value(config, "proof", "true");
     self.ctx = Z3_mk_context(config)
+    self.intSort = Z3_mk_int_sort(ctx)
   }
 
   deinit {
@@ -21,14 +23,23 @@ class Z3Context {
   }
 
   func make(intVariable name: String) -> Z3Expr<Int> {
-    return Z3Expr(self, Z3_mk_const(ctx, Z3_mk_string_symbol(ctx, name), Z3_mk_int_sort(ctx)))
+    return Z3Expr(self, Z3_mk_const(ctx, Z3_mk_string_symbol(ctx, name), intSort))
+  }
+
+  func make(listVariable name: String) -> Z3Expr<[Int]> {
+    let nameSymbol = Z3_mk_string_symbol(ctx, name)
+    let funcDecl = Z3_mk_func_decl(ctx, nameSymbol, 1, [intSort], intSort)
+    return Z3Expr(self, Z3_func_decl_to_ast(ctx, funcDecl))
   }
 
   func literal(_ value: Int) -> Z3Expr<Int> {
-    return Z3Expr(self, Z3_mk_int64(ctx, Int64(value), Z3_mk_int_sort(ctx)))
+    return Z3Expr(self, Z3_mk_int64(ctx, Int64(value), intSort))
   }
 
+
+  static let `default` = Z3Context()
 }
+
 
 class Z3Solver: CustomStringConvertible {
   var ctx: Z3Context
@@ -143,4 +154,14 @@ func /(_ a: Z3Expr<Int>, _ b: Z3Expr<Int>) -> Z3Expr<Int> {
 
 func ==<A>(_ a: Z3Expr<A>, _ b: Z3Expr<A>) -> Z3Expr<Bool> {
   return binaryOp(a, b, Z3_mk_eq)
+}
+
+func ><A>(_ a: Z3Expr<A>, _ b: Z3Expr<A>) -> Z3Expr<Bool> {
+  return binaryOp(a, b, Z3_mk_gt)
+}
+
+extension Z3Expr where T == [Int] {
+  func callAsFunction(_ arg: Z3Expr<Int>) -> Z3Expr<Int> {
+    return Z3Expr<Int>(ctx, Z3_mk_app(ctx.ctx, Z3_to_func_decl(ctx.ctx, ast), 1, [arg.ast]))
+  }
 }

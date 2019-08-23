@@ -5,6 +5,7 @@
 * Recovery of contradictory assertions from SMT unsat proofs
 * Support for inequalities
 * Use unoptimized SIL
+* Negative dimension indices
 * Propagation of source information through the system
 * Support for structs
 * Emit warnings from the frontend

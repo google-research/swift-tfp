@@ -1,4 +1,4 @@
-import LibShapeChecker
+@testable import LibShapeChecker
 import SIL
 import SPMUtility
 
@@ -32,6 +32,9 @@ func main() {
     print("")
     print(fn)
     print(signature.prettyDescription)
+    for constraint in signature.constraints {
+      print(constraint.solverAST)
+    }
   }
 
 }
