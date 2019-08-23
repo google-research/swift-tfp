@@ -160,8 +160,26 @@ func >(_ a: Z3Expr<Int>, _ b: Z3Expr<Int>) -> Z3Expr<Bool> {
   return binaryOp(a, b, Z3_mk_gt)
 }
 
+func >=(_ a: Z3Expr<Int>, _ b: Z3Expr<Int>) -> Z3Expr<Bool> {
+  return binaryOp(a, b, Z3_mk_ge)
+}
+
 extension Z3Expr where T == [Int] {
   func call(_ arg: Z3Expr<Int>) -> Z3Expr<Int> {
     return Z3Expr<Int>(ctx, Z3_mk_app(ctx.ctx, Z3_to_func_decl(ctx.ctx, ast), 1, [arg.ast]))
   }
+}
+
+func forall(_ f: (Z3Expr<Int>) -> Z3Expr<Bool>) -> Z3Expr<Bool> {
+  let context = Z3Context.default
+  let ctx = context.ctx
+  let intSort = Z3_mk_int_sort(ctx)
+  let arg = Z3Expr<Int>(context, Z3_mk_bound(ctx, 0, intSort))
+  return Z3Expr(context,
+                Z3_mk_forall(ctx,
+                             /*weight=*/0,
+                             /*num_patterns=*/0, /*patterns=*/nil,
+                             /*num_decls=*/1, /*sorts=*/[intSort],
+                             /*decl_names=*/[Z3_mk_string_symbol(ctx, "__int")],
+                             /*body=*/f(arg).ast))
 }

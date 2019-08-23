@@ -13,10 +13,26 @@ final class Z3Tests: XCTestCase {
       (.intEq(.length(of: s0), .literal(2)), "(= s0_rank 2)"),
       (.intGt(.length(of: s0), .literal(2)), "(> s0_rank 2)"),
       (.intEq(.element(1, of: s0), .element(2, of: s1)), "(= (s0 1) (s1 2))"),
+      (.intEq(.literal(1),
+              .add(.mul(.element(1, of: s1), .literal(2)),
+                   .div(.sub(.element(0, of: s0), .literal(3)), .literal(4)))),
+       "(= 1 (+ (* (s1 1) 2) (div (- (s0 0) 3) 4)))"),
     ]
     for (expr, expectedDescription) in examples {
       XCTAssertEqual(expr.solverAST.description, expectedDescription)
     }
+  }
+
+  func testNonNegativeShapes() {
+    // x.shape[0] + 1 == 0 should be unsatisfiable
+    XCTAssertEqual(verify([
+      .expr(.intEq(.add(.element(0, of: s0), .literal(1)), .literal(0)))
+    ]), false)
+    // Same if we hide the dependency transitively
+    XCTAssertEqual(verify([
+      .expr(.intEq(.element(0, of: s0), .sub(.element(0, of: s1), .literal(1)))),
+      .expr(.intEq(.element(0, of: s1), .literal(0)))
+    ]), false)
   }
 
   static var allTests = [

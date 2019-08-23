@@ -16,6 +16,9 @@ public indirect enum IntExpr: Equatable {
   case element(Int, of: ListExpr)
 
   case add(IntExpr, IntExpr)
+  case sub(IntExpr, IntExpr)
+  case mul(IntExpr, IntExpr)
+  case div(IntExpr, IntExpr)
 }
 
 public indirect enum ListExpr: Equatable {
@@ -52,6 +55,12 @@ public func substitute(_ e: IntExpr, using s: Substitution) -> IntExpr {
     return .element(offset, of: substitute(expr, using: s))
   case let .add(lhs, rhs):
     return .add(substitute(lhs, using: s), substitute(rhs, using: s))
+  case let .sub(lhs, rhs):
+    return .sub(substitute(lhs, using: s), substitute(rhs, using: s))
+  case let .mul(lhs, rhs):
+    return .mul(substitute(lhs, using: s), substitute(rhs, using: s))
+  case let .div(lhs, rhs):
+    return .div(substitute(lhs, using: s), substitute(rhs, using: s))
   }
 }
 
@@ -99,7 +108,13 @@ extension IntExpr: CustomStringConvertible {
     case let .element(offset, of: expr):
       return "\(expr).shape[\(offset)]"
     case let .add(lhs, rhs):
-      return "\(lhs) + \(rhs)"
+      return "(\(lhs) + \(rhs))"
+    case let .sub(lhs, rhs):
+      return "(\(lhs) - \(rhs))"
+    case let .mul(lhs, rhs):
+      return "\(lhs) * \(rhs)"
+    case let .div(lhs, rhs):
+      return "\(lhs) / \(rhs)"
     }
   }
 }

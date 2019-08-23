@@ -32,6 +32,7 @@ fileprivate class Interpreter {
     case int(IntExpr)
     case list(ListExpr)
     case bool(BoolExpr)
+    case tupleIntBool(IntExpr)
 
     case builtinFunction(_ kind: BuiltinFunction)
     case function(_ name: String)
@@ -117,6 +118,11 @@ fileprivate class Interpreter {
           break
         }
 
+      case let .tupleExtract(operand, decl):
+        guard case let .tupleIntBool(fst) = valuation[operand.value] else { continue }
+        guard decl == 0 else { continue }
+        updates = [.int(fst)]
+
       default:
         break
       }
@@ -133,13 +139,21 @@ fileprivate class Interpreter {
   }
 
   func interpret(builtinInstruction op: String, values: [AbstractValue?]) -> [AbstractValue]? {
-    switch op {
-    case "cmp_eq_Int64":
+    func asBinary(trailingArgs: Int = 0, _ f: (IntExpr, IntExpr) -> AbstractValue) -> [AbstractValue]? {
       let inputs = values.compactMap{ $0 }
-      guard values.count == 2 && inputs.count == 2 else { return nil }
+      let expectedArgs = 2 + trailingArgs
+      guard values.count == expectedArgs && inputs.count == expectedArgs else { return nil }
       guard case let .int(lhs) = values[0] else { return nil }
       guard case let .int(rhs) = values[1] else { return nil }
-      return [.bool(.intEq(lhs, rhs))]
+      return [f(lhs, rhs)]
+    }
+    switch op {
+    case "cmp_eq_Int64":
+      return asBinary{ .bool(.intEq($0, $1)) }
+    case "ssub_with_overflow_Int64":
+      return asBinary(trailingArgs: 1){ .tupleIntBool(.sub($0, $1)) }
+    case "sadd_with_overflow_Int64":
+      return asBinary(trailingArgs: 1){ .tupleIntBool(.add($0, $1)) }
     default:
       return nil
     }

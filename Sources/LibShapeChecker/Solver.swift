@@ -1,13 +1,21 @@
 
 func verify(_ constraints: [Constraint]) -> Bool? {
   let solver = Z3Context.default.makeSolver()
+  var shapeVars = Set<Var>()
   for constraint in constraints {
     switch constraint {
     case let .expr(expr):
       solver.assert(expr.solverAST)
+      // Perform a no-op substitution that has a side effect of gathering
+      // all variables appearing in a formula.
+      let _ = substitute(expr, using: { shapeVars.insert($0); return $0 })
     case .call(_, _, _):
       break
     }
+  }
+  let zero = Z3Context.default.literal(0)
+  for v in shapeVars {
+    solver.assert(forall { ListExpr.var(v).solverAST.call($0) >= zero })
   }
   return solver.check()
 }
@@ -31,6 +39,12 @@ extension IntExpr {
       }
     case let .add(lhs, rhs):
       return lhs.solverAST + rhs.solverAST
+    case let .sub(lhs, rhs):
+      return lhs.solverAST - rhs.solverAST
+    case let .mul(lhs, rhs):
+      return lhs.solverAST * rhs.solverAST
+    case let .div(lhs, rhs):
+      return lhs.solverAST / rhs.solverAST
     }
   }
 }
