@@ -1,7 +1,7 @@
 public typealias VarName = Int
 
 // TODO: Should the Vars have the int/list sorts encoded on the type level?
-public struct Var {
+public struct Var: Hashable {
   let name: VarName
   init(_ name: VarName) { self.name = name }
 }
@@ -35,10 +35,10 @@ public enum Constraint {
 ////////////////////////////////////////////////////////////////////////////////
 // MARK: - Substitution support
 
-public typealias Substitution = (VarName) -> VarName
+public typealias Substitution = (Var) -> Var
 
 public func substitute(_ v: Var, using s: Substitution) -> Var {
-  return Var(s(v.name))
+  return s(v)
 }
 
 public func substitute(_ e: IntExpr, using s: Substitution) -> IntExpr {

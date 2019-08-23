@@ -1,15 +1,17 @@
 
-extension Constraint {
-  var solverAST: Z3Expr<Bool>? {
-    switch self {
-    // No environment to resolve the calls
-    case .call(_, _, _):
-      return nil
+func verify(_ constraints: [Constraint]) -> Bool? {
+  let solver = Z3Context.default.makeSolver()
+  for constraint in constraints {
+    switch constraint {
     case let .expr(expr):
-      return expr.solverAST
+      solver.assert(expr.solverAST)
+    case .call(_, _, _):
+      break
     }
   }
+  return solver.check()
 }
+
 
 extension IntExpr {
   var solverAST: Z3Expr<Int> {

@@ -32,8 +32,14 @@ func main() {
     print("")
     print(fn)
     print(signature.prettyDescription)
-    for constraint in signature.constraints {
-      print(constraint.solverAST)
+    let constraints = instantiate(constraintsOf: fn, inside: analyzer.environment)
+    switch verify(constraints) {
+    case .some(true):
+      print("✅ Constraints are satisfiable!")
+    case .some(false):
+      print("❌ Found a contradiction!")
+    case .none:
+      print("❔ Can't solve the constraint system")
     }
   }
 

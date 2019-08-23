@@ -37,6 +37,72 @@ public class Analyzer {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// MARK: - Instantiation of constraints for the call chain
+
+public func instantiate(constraintsOf name: String,
+                 inside env: Environment) -> [Constraint] {
+  let instantiator = ConstraintInstantiator(name, env)
+  return instantiator.constraints
+}
+
+class ConstraintInstantiator {
+  typealias Substitution = DefaultDict<Var, Var>
+
+  let environment: Environment
+  var constraints: [Constraint] = []
+  var callStack = Set<String>() // To sure we don't recurse
+
+  let freshVar = count(from: 1) >>> Var.init
+
+
+  init(_ name: String,
+       _ env: Environment) {
+    self.environment = env
+    guard let summary = environment[name] else { return }
+    let _ = apply(name, to: summary.argVars)
+  }
+
+  func apply(_ name: String, to args: [Var?]) -> Var? {
+    guard let summary = environment[name] else { return nil }
+    guard !callStack.contains(name) else { return nil }
+
+    callStack.insert(name)
+    defer { callStack.remove(name) }
+
+    // Instantiate the constraint system for the callee, by:
+    var substitution = Substitution{ [weak self] _ in self!.freshVar() }
+    // NB: We pop at the end of the function, hence no defer here.
+
+    // 1. Substituting the formal argument variables for the actual variables.
+    assert(summary.argVars.count == args.count)
+    for (maybeFormal, maybeActual) in zip(summary.argVars, args) {
+      // NB: Only instantiate the mapping for args that have some constraints
+      //     associated with them.
+      guard let formal = maybeFormal else { continue }
+      guard let actual = maybeActual else { continue }
+      substitution[formal] = actual
+    }
+
+    // 2. Replacing the variables in the body of the summary with fresh versions.
+    for constraint in summary.constraints {
+      switch constraint {
+      case let .expr(expr):
+        constraints.append(.expr(substitute(expr, using: { substitution[$0] })))
+      case let .call(name, args, maybeResult):
+        let maybeApplyResult = apply(name, to: args)
+        if let applyResult = maybeApplyResult,
+           let result = maybeResult {
+          substitution[result] = applyResult
+        }
+      }
+    }
+
+    guard let result = summary.retVar else { return nil }
+    return substitution[result]
+  }
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // MARK: - CustomStringConvertible instances
 
 extension FunctionSummary: CustomStringConvertible {
