@@ -16,15 +16,19 @@ func check(_ cond: Bool) { if !cond { fatalError() } }
 
 ## Recognized constraints
 
+Here are a few examples:
 ```swift
 x.rank == 2
-// NB: No x.rank == y.rank yet. It's a TODO
-x.shape == y.shape
+x.rank == y.rank
+// NB: No x.shape == y.shape. It's a TODO
 x.shape[0] == y.shape[1]
 x.shape[0] == 5
+x.shape[0] == (y.shape[1] - z.shape[2] + 1) / 2
 // NB: No x.shape == [y.shape[0], 4] yet because it's a bit hard
 //     to do in the frontend (array literals are filled through pointers).
 ```
+
+_TODO: Write down the exact grammar_
 
 ## How to use
 
@@ -76,34 +80,43 @@ you should see an output similar to this:
 ...
 
 matmul
-[s1 = [d1, d2],
- s2 = [d3, d4],
- d2 = d3,
- s3 = [d5, d6],
- d5 = d1,
- d6 = d4] => (s1, s2) -> s3
-Constraint check passed!
+[s0.rank == 2,
+ s1.rank == 2,
+ s0.rank > 1,
+ s1.rank > 0,
+ s0.shape[1] == s1.shape[0],
+ $s10TensorFlow6matmul_10transposed_AcA0A0VyxGAF_SbAFSbtSjRzAA0aB6ScalarRzlFfA0_(),
+ $s10TensorFlow6matmul_10transposed_AcA0A0VyxGAF_SbAFSbtSjRzAA0aB6ScalarRzlFfA2_(),
+ s2 = $s10TensorFlow6matmul_10transposed_AcA0A0VyxGAF_SbAFSbtSjRzAA0aB6ScalarRzlF(s0, *, s1, *),
+ s2.rank == 2,
+ s2.rank > 0,
+ s0.rank > 0,
+ s2.shape[0] == s0.shape[0],
+ s2.rank > 1,
+ s1.rank > 1,
+ s2.shape[1] == s1.shape[1]] => (s0, s1) -> s2
+✅ Constraints are satisfiable!
 
 transpose
-[s1 = [d1, d2], s2 = [d3, d4], d3 = d2, d4 = d1] => (s1) -> s2
-Constraint check passed!
+[s0.rank == 2,
+ s1 = $s10TensorFlow0A0V10transposedACyxGyF(s0),
+ s1.rank == 2,
+ s1.rank > 0,
+ s0.rank > 1,
+ s1.shape[0] == s0.shape[1],
+ s1.rank > 1,
+ s0.rank > 0,
+ s1.shape[1] == s0.shape[0]] => (s0) -> s1
+✅ Constraints are satisfiable!
 
 verify
-[s1[0] = d1,
- d1 = 2,
- s1[1] = d2,
- d2 = 3,
- s1 = [d3, d4],
- s1 = [d5, d6],
- d4 = d5,
- s2 = [d7, d8],
- d7 = d3,
- d8 = d6,
- s2 = [d9, d10],
- s3 = [d11, d12],
- d11 = d10,
- d12 = d9] => (s1) -> s3
-Found a shape error: dimensionSizeMismatch(prev: 3, now: 2)
+[s0.rank > 0,
+ s0.shape[0] == 2,
+ s0.rank > 1,
+ s0.shape[1] == 3,
+ s1 = matmul(s0, s0),
+ s2 = transpose(s1)] => (s0) -> s2
+❌ Found a contradiction!
 ```
 
 What you see here is a shape signature of the matmul function.
