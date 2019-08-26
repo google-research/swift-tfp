@@ -2,7 +2,6 @@
 * Call graph analysis (topological sort)
 * More efficient verification (e.g. start with roots and only descend if failures are found)
 * Propagation of constrant values through function calls (just Int would be already helpful)
-* Recovery of contradictory assertions from SMT unsat proofs
 * Support for inequalities
 * Use unoptimized SIL
 * Negative dimension indices

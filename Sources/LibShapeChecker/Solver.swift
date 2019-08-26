@@ -1,11 +1,18 @@
+enum SolverResult {
+  case sat
+  case unknown
+  case unsat([BoolExpr]?)
+}
 
-func verify(_ constraints: [Constraint]) -> Bool? {
+func verify(_ constraints: [Constraint]) -> SolverResult {
   let solver = Z3Context.default.makeSolver()
   var shapeVars = Set<Var>()
+  var trackers: [String: BoolExpr] = [:]
+
   for constraint in constraints {
     switch constraint {
     case let .expr(expr):
-      solver.assert(expr.solverAST)
+      trackers[solver.assertAndTrack(expr.solverAST)] = expr
       // Perform a no-op substitution that has a side effect of gathering
       // all variables appearing in a formula.
       let _ = substitute(expr, using: { shapeVars.insert($0); return $0 })
@@ -13,11 +20,21 @@ func verify(_ constraints: [Constraint]) -> Bool? {
       break
     }
   }
+  // Additionally assert that all shapes are non-negative
   let zero = Z3Context.default.literal(0)
   for v in shapeVars {
     solver.assert(forall { ListExpr.var(v).solverAST.call($0) >= zero })
   }
-  return solver.check()
+
+  switch solver.check() {
+  case .some(true):
+    return .sat
+  case .none:
+    return .unknown
+  case .some(false):
+    guard let unsatCore = solver.getUnsatCore() else { return .unsat(nil) }
+    return .unsat(unsatCore.map{ trackers[$0]! })
+  }
 }
 
 

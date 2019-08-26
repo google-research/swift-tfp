@@ -3,15 +3,14 @@ import libz3
 class Z3Context {
   var ctx: Z3_context
   let intSort: Z3_sort
+  let boolSort: Z3_sort
 
   init() {
     var config: Z3_config = Z3_mk_config()
     defer { Z3_del_config(config) }
-    // FIXME: We should be more selective about the model and proof creation
-    Z3_set_param_value(config, "model", "true");
-    Z3_set_param_value(config, "proof", "true");
     self.ctx = Z3_mk_context(config)
     self.intSort = Z3_mk_int_sort(ctx)
+    self.boolSort = Z3_mk_bool_sort(ctx)
   }
 
   deinit {
@@ -32,6 +31,10 @@ class Z3Context {
     return Z3Expr(self, Z3_func_decl_to_ast(ctx, funcDecl))
   }
 
+  func make(boolVariable name: String) -> Z3Expr<Bool> {
+    return Z3Expr(self, Z3_mk_const(ctx, Z3_mk_string_symbol(ctx, name), boolSort))
+  }
+
   func literal(_ value: Int) -> Z3Expr<Int> {
     return Z3Expr(self, Z3_mk_int64(ctx, Int64(value), intSort))
   }
@@ -44,6 +47,7 @@ class Z3Context {
 class Z3Solver: CustomStringConvertible {
   var ctx: Z3Context
   var solver: Z3_solver
+  let nextTrackVarName = count(from: 0) >>> { "tr\($0)" }
 
   var description: String {
     guard let nonNull = Z3_solver_to_string(ctx.ctx, solver) else { return "<NULL SOLVER?>" }
@@ -64,6 +68,12 @@ class Z3Solver: CustomStringConvertible {
     Z3_solver_assert(ctx.ctx, solver, expr.ast)
   }
 
+  func assertAndTrack(_ expr: Z3Expr<Bool>) -> String {
+    let trackingVarName = nextTrackVarName()
+    Z3_solver_assert_and_track(ctx.ctx, solver, expr.ast, ctx.make(boolVariable: trackingVarName).ast)
+    return trackingVarName
+  }
+
   func check() -> Bool? {
     switch Z3_solver_check(ctx.ctx, solver) {
     case Z3_L_FALSE: return false
@@ -82,6 +92,17 @@ class Z3Solver: CustomStringConvertible {
   func getProof() -> Z3Expr<Void>? {
     guard let proof = Z3_solver_get_proof(ctx.ctx, solver) else { return nil }
     return Z3Expr(ctx, proof)
+  }
+
+  func getUnsatCore() -> [String]? {
+    guard let assumptions = Z3_solver_get_unsat_core(ctx.ctx, solver) else { return nil }
+    var assumptionNames: [String] = []
+    for i in 0..<Z3_ast_vector_size(ctx.ctx, assumptions) {
+      guard let assumption = Z3_ast_vector_get(ctx.ctx, assumptions, i) else { return nil }
+      // FIXME: Figure out a better way to extract assumption names
+      assumptionNames.append(Z3Expr<Bool>(ctx, assumption).description)
+    }
+    return assumptionNames
   }
 }
 
