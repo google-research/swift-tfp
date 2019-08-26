@@ -31,7 +31,8 @@ public class Analyzer {
   }
 
   func analyze(_ block: Block) -> FunctionSummary? {
-    return abstract(block)
+    let instrDefs = normalizeArrayLiterals(block.instructionDefs)
+    return abstract(Block(block.identifier, block.arguments, instrDefs))
   }
 
 }

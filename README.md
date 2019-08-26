@@ -20,12 +20,11 @@ Here are a few examples:
 ```swift
 x.rank == 2
 x.rank == y.rank
-// NB: No x.shape == y.shape. It's a TODO
+x.shape == y.shape
 x.shape[0] == y.shape[1]
 x.shape[0] == 5
 x.shape[0] == (y.shape[1] - z.shape[2] + 1) / 2
-// NB: No x.shape == [y.shape[0], 4] yet because it's a bit hard
-//     to do in the frontend (array literals are filled through pointers).
+x.shape == [y.shape[0], 4]
 ```
 
 _TODO: Write down the exact grammar_

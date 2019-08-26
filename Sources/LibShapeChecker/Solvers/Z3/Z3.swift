@@ -185,6 +185,14 @@ func >=(_ a: Z3Expr<Int>, _ b: Z3Expr<Int>) -> Z3Expr<Bool> {
   return binaryOp(a, b, Z3_mk_ge)
 }
 
+func <(_ a: Z3Expr<Int>, _ b: Z3Expr<Int>) -> Z3Expr<Bool> {
+  return binaryOp(a, b, Z3_mk_lt)
+}
+
+func <=(_ a: Z3Expr<Int>, _ b: Z3Expr<Int>) -> Z3Expr<Bool> {
+  return binaryOp(a, b, Z3_mk_le)
+}
+
 prefix func !(_ a: Z3Expr<Bool>) -> Z3Expr<Bool> {
   return Z3Expr(a.ctx, Z3_mk_not(a.ctx.ctx, a.ast))
 }

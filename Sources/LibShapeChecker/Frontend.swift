@@ -16,6 +16,7 @@ enum BuiltinFunction {
   case intMultiply
   case intDivide
 
+  case shapeConstructor
   case rankGetter
   case shapeGetter
   case shapeSubscript
@@ -84,6 +85,16 @@ fileprivate class Interpreter {
       case let .integerLiteral(type, value):
         guard case .selectType(.namedType("Builtin"), "IntLiteral") = type else { continue }
         updates = [.int(.literal(value))]
+
+      case let .builtin(name, operands, type):
+        guard name == arrayLiteralBuiltinName,
+              .specializedType(.namedType("Array"), [.namedType("Int")]) == type else { continue }
+        guard let arrayReg = operands.first?.value else { continue }
+        let elementExprs = operands[1...].map{ (operand: Operand) -> IntExpr? in
+          guard case let .int(expr) = valuation[operand.value] else { return nil }
+          return expr
+        }
+        valuation[arrayReg] = .list(.literal(elementExprs))
 
       case let .functionRef(name, _):
         if let builtin = getBuiltinFunctionRef(called: name) {
@@ -179,10 +190,10 @@ fileprivate class Interpreter {
       return binaryOp(trailingCount: 1) { .bool(.intGe($0, $1)) }
 
     case .intSmaller:
-      return binaryOp(trailingCount: 1) { .bool(.not(.intGe($0, $1))) }
+      return binaryOp(trailingCount: 1) { .bool(.intLt($0, $1)) }
 
     case .intSmallerEqual:
-      return binaryOp(trailingCount: 1) { .bool(.not(.intGt($0, $1))) }
+      return binaryOp(trailingCount: 1) { .bool(.intLe($0, $1)) }
 
     case .intPlus:
       return binaryOp(trailingCount: 1) { .int(.add($0, $1)) }
@@ -199,6 +210,12 @@ fileprivate class Interpreter {
     case .intLiteralConstructor:
       guard args.count == 2 else {
         fatalError("Int constructor expected two arguments")
+      }
+      return [valuation[args[0]]]
+
+    case .shapeConstructor:
+      guard args.count == 2 else {
+        fatalError("Shape constructor expected two arguments")
       }
       return [valuation[args[0]]]
 
@@ -280,6 +297,8 @@ fileprivate func getBuiltinFunctionRef(called name: String) -> BuiltinFunction? 
       return .intLiteralConstructor
     case "check":
       return .check
+  case "$s10TensorFlow0A5ShapeV12arrayLiteralACSid_tcfC":
+      return .shapeConstructor
     case "$s10TensorFlow0A0V5shapeAA0A5ShapeVvg":
       return .shapeGetter
     case "$s10TensorFlow0A5ShapeVyS2icir":

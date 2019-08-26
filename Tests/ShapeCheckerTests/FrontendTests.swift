@@ -51,7 +51,7 @@ final class FrontendTests: XCTestCase {
   func testAssertRecovery() {
     func makeCheck(_ cond: String) -> String {
       return """
-        @_silgen_name("f") func f(x: Tensor<Float>, y: Tensor<Float>, z: Tensor<Float>) {
+        @_silgen_name("f") func f(x: Tensor<Float>, y: Tensor<Float>, z: Tensor<Float>, i: Int) {
           check(\(cond))
         }
       """
@@ -91,22 +91,28 @@ final class FrontendTests: XCTestCase {
       ("x.shape[0] >= y.shape[0]",
        xyNotScalar + [.intGe(.element(0, of: xVar), .element(0, of: yVar))]),
       ("x.shape[0] < y.shape[0]",
-       xyNotScalar + [.not(.intGe(.element(0, of: xVar), .element(0, of: yVar)))]),
+       xyNotScalar + [.intLt(.element(0, of: xVar), .element(0, of: yVar))]),
       ("x.shape[0] <= y.shape[0]",
-       xyNotScalar + [.not(.intGt(.element(0, of: xVar), .element(0, of: yVar)))]),
+       xyNotScalar + [.intLe(.element(0, of: xVar), .element(0, of: yVar))]),
+      ("x.shape == y.shape", [.listEq(xVar, yVar)]),
+      ("x.shape == [1, 2 + y.shape[0], i]", [
+        .intGt(.length(of: yVar), .literal(0)),
+        .listEq(xVar, .literal([.literal(1), .add(.literal(2), .element(0, of: yVar)), nil]))
+      ])
     ]
     for (cond, expectedExprs) in asserts {
       withSIL(forSource: makeCheck(cond)) { module in
         guard let block = getOnlyBlock(fromFunctionCalled: "f", module) else {
           return XCTFail("Couldn't retrieve the block")
         }
-        guard let summary = abstract(block) else {
+        let instrDefs = normalizeArrayLiterals(block.instructionDefs)
+        guard let summary = abstract(Block(block.identifier, block.arguments, instrDefs)) else {
           return XCTFail("Failed to recover the summary for: \(cond)")
         }
-        let exprs = summary.constraints.map { (_ c: Constraint) -> BoolExpr in
+        let exprs = summary.constraints.compactMap { (_ c: Constraint) -> BoolExpr? in
           switch c {
           case let .expr(expr): return expr
-          case .call(_, _, _): fatalError("Didn't expect to see call constraints")
+          case .call(_, _, _): return nil
           }
         }
         XCTAssertEqual(exprs, expectedExprs)

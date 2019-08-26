@@ -61,3 +61,9 @@ func assertUnsat(_ result: SolverResult) {
     return XCTFail("Expected unsat, got: \(result)!")
   }
 }
+
+func assertSat(_ result: SolverResult) {
+  guard case .sat = result else {
+    return XCTFail("Expected sat, got: \(result)!")
+  }
+}
