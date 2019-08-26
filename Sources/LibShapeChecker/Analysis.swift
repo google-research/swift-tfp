@@ -89,7 +89,7 @@ class ConstraintInstantiator {
       case let .expr(expr):
         constraints.append(.expr(substitute(expr, using: { substitution[$0] })))
       case let .call(name, args, maybeResult):
-        let maybeApplyResult = apply(name, to: args)
+        let maybeApplyResult = apply(name, to: args.map{ $0.map{ substitution[$0] } })
         if let applyResult = maybeApplyResult,
            let result = maybeResult {
           substitution[result] = applyResult
