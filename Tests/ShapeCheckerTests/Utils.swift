@@ -1,3 +1,4 @@
+@testable import LibShapeChecker
 import XCTest
 import SIL
 
@@ -52,5 +53,11 @@ extension XCTestCase {
   func getOnlyBlock(fromFunctionCalled name: String, _ module: Module) -> Block? {
     guard let f = getFunction(called: name, module) else { return nil }
     return getOnlyBlock(f)
+  }
+}
+
+func assertUnsat(_ result: SolverResult) {
+  guard case .unsat(_) = result else {
+    return XCTFail("Expected unsat, got: \(result)!")
   }
 }

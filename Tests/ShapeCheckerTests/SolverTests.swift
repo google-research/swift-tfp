@@ -25,14 +25,14 @@ final class Z3Tests: XCTestCase {
 
   func testNonNegativeShapes() {
     // x.shape[0] + 1 == 0 should be unsatisfiable
-    XCTAssertEqual(verify([
+    assertUnsat(verify([
       .expr(.intEq(.add(.element(0, of: s0), .literal(1)), .literal(0)))
-    ]), false)
+    ]))
     // Same if we hide the dependency transitively
-    XCTAssertEqual(verify([
+    assertUnsat(verify([
       .expr(.intEq(.element(0, of: s0), .sub(.element(0, of: s1), .literal(1)))),
       .expr(.intEq(.element(0, of: s1), .literal(0)))
-    ]), false)
+    ]))
   }
 
   static var allTests = [

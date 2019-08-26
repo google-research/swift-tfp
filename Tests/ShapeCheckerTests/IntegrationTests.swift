@@ -22,7 +22,7 @@ final class IntegrationTests: XCTestCase {
         return XCTFail("Failed to instantiate constraints for 'f'")
       }
 
-      XCTAssertEqual(verify(constraints), false)
+      assertUnsat(verify(constraints))
     }
   }
 
