@@ -49,6 +49,9 @@ extension IntExpr {
         return Z3Context.default.make(intVariable: "\(v)_rank")
       }
     case let .element(offset, of: list):
+      // FIXME: This should not be an error, but a warning. This assertion should be
+      //        simply ignored!
+      guard offset >= 0 else { fatalError("Negative shape indices are not supported yet!") }
       switch list {
       case let .var(v):
         let listVar = Z3Context.default.make(listVariable: "\(v)")

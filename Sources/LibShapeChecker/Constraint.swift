@@ -11,8 +11,7 @@ public indirect enum IntExpr: Equatable {
   case literal(Int)
   case length(of: ListExpr)
   // TODO: Accept int expressions instead of literals only?
-  // FIXME: Verify that this is a positive expression, because our
-  //        current encoding does not play well with negative dim indices.
+  // TODO: Handle negative integers
   case element(Int, of: ListExpr)
 
   case add(IntExpr, IntExpr)

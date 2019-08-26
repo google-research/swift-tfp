@@ -1,11 +1,13 @@
+* Use SILGen?
 * Arithmetic support
-* Call graph analysis (topological sort)
-* More efficient verification (e.g. start with roots and only descend if failures are found)
-* Propagation of constrant values through function calls (just Int would be already helpful)
 * Support for inequalities
-* Use unoptimized SIL
+* Broadcasting
+* Support for array literals
+* Shape equality (it's a bit complex to represent at the Z3 level)
+* Propagation of abstract values through function calls (just Int would be already helpful)
 * Negative dimension indices
-* Propagation of source information through the system
 * Support for structs
+* Propagation of source information through the system
 * Emit warnings from the frontend
 * Control flow support
+* More efficient verification (e.g. start with roots and only descend if failures are found)
