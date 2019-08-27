@@ -10,6 +10,7 @@ struct DefUse {
   init?(_ instrDefs: [InstructionDef]) {
     self.instrDefs = instrDefs
     for (i, instr) in instrDefs.enumerated() {
+      // TODO: Warn
       guard let readList = instr.instruction.operandNames else { return nil }
       for register in Set(readList) {
         uses[register].append(i)
