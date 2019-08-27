@@ -24,9 +24,11 @@ public indirect enum ListExpr: Equatable {
   case `var`(Var)
 }
 
-public enum BoolExpr: Equatable {
+public indirect enum BoolExpr: Equatable {
+  case not(BoolExpr)
   case intEq(IntExpr, IntExpr)
   case intGt(IntExpr, IntExpr)
+  case intGe(IntExpr, IntExpr)
   case listEq(ListExpr, ListExpr)
 }
 
@@ -72,10 +74,14 @@ public func substitute(_ e: ListExpr, using s: Substitution) -> ListExpr {
 
 public func substitute(_ e: BoolExpr, using s: Substitution) -> BoolExpr {
   switch e {
+  case let .not(subexpr):
+    return .not(substitute(subexpr, using: s))
   case let .intEq(lhs, rhs):
     return .intEq(substitute(lhs, using: s), substitute(rhs, using: s))
   case let .intGt(lhs, rhs):
     return .intGt(substitute(lhs, using: s), substitute(rhs, using: s))
+  case let .intGe(lhs, rhs):
+    return .intGe(substitute(lhs, using: s), substitute(rhs, using: s))
   case let .listEq(lhs, rhs):
     return .listEq(substitute(lhs, using: s), substitute(rhs, using: s))
   }
@@ -130,10 +136,14 @@ extension ListExpr: CustomStringConvertible {
 extension BoolExpr: CustomStringConvertible {
   public var description: String {
     switch self {
+    case let .not(subexpr):
+      return "!(\(subexpr))"
     case let .intEq(lhs, rhs):
       return "\(lhs) == \(rhs)"
     case let .intGt(lhs, rhs):
       return "\(lhs) > \(rhs)"
+    case let .intGe(lhs, rhs):
+      return "\(lhs) >= \(rhs)"
     case let .listEq(lhs, rhs):
       return "\(lhs) == \(rhs)"
     }

@@ -1,7 +1,6 @@
-* Arithmetic support
-* Support for inequalities
-* Broadcasting
 * Support for array literals
+* Support for regular assertions
+* Broadcasting
 * Shape equality (it's a bit complex to represent at the Z3 level)
 * Propagation of abstract values through function calls (just Int would be already helpful)
 * Negative dimension indices

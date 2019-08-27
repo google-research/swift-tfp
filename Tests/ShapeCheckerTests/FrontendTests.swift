@@ -58,6 +58,10 @@ final class FrontendTests: XCTestCase {
     }
     let xVar = ListExpr.var(Var(0))
     let yVar = ListExpr.var(Var(1))
+    let xyNotScalar: [BoolExpr] = [
+      .intGt(.length(of: xVar), .literal(0)),
+      .intGt(.length(of: yVar), .literal(0)),
+    ]
     let asserts: [(String, [BoolExpr])] = [
       ("x.rank == 2", [.intEq(.length(of: xVar), .literal(2))]),
       ("x.rank == y.rank", [.intEq(.length(of: xVar), .length(of: yVar))]),
@@ -69,7 +73,27 @@ final class FrontendTests: XCTestCase {
         .intGt(.length(of: yVar), .literal(2)),
         .intEq(.element(1, of: xVar), .element(2, of: yVar))
       ]),
-      // TODO: Tests with shape arithmetic
+      ("x.shape[0] == y.shape[0] + y.shape[1] * y.shape[2] / y.shape[3]", [
+        .intGt(.length(of: xVar), .literal(0)),
+        .intGt(.length(of: yVar), .literal(0)),
+        .intGt(.length(of: yVar), .literal(1)),
+        .intGt(.length(of: yVar), .literal(2)),
+        .intGt(.length(of: yVar), .literal(3)),
+        .intEq(.element(0, of: xVar), .add(
+          .element(0, of: yVar),
+          .div(
+            .mul(.element(1, of: yVar), .element(2, of: yVar)),
+            .element(3, of: yVar))
+        )),
+      ]),
+      ("x.shape[0] > y.shape[0]",
+       xyNotScalar + [.intGt(.element(0, of: xVar), .element(0, of: yVar))]),
+      ("x.shape[0] >= y.shape[0]",
+       xyNotScalar + [.intGe(.element(0, of: xVar), .element(0, of: yVar))]),
+      ("x.shape[0] < y.shape[0]",
+       xyNotScalar + [.not(.intGe(.element(0, of: xVar), .element(0, of: yVar)))]),
+      ("x.shape[0] <= y.shape[0]",
+       xyNotScalar + [.not(.intGt(.element(0, of: xVar), .element(0, of: yVar)))]),
     ]
     for (cond, expectedExprs) in asserts {
       withSIL(forSource: makeCheck(cond)) { module in
@@ -89,8 +113,6 @@ final class FrontendTests: XCTestCase {
       }
     }
   }
-
-
 
   static var allTests = [
     ("testFrontendConstraints", testFrontendConstraints),

@@ -72,10 +72,14 @@ extension IntExpr {
 extension BoolExpr {
   var solverAST: Z3Expr<Bool> {
     switch self {
+    case let .not(subexpr):
+      return !subexpr.solverAST
     case let .intEq(lhs, rhs):
       return lhs.solverAST == rhs.solverAST
     case let .intGt(lhs, rhs):
       return lhs.solverAST > rhs.solverAST
+    case let .intGe(lhs, rhs):
+      return lhs.solverAST >= rhs.solverAST
     case .listEq(_, _):
       // FIXME: <sigh> Z3 does not allow us to say (= s0 s1), so we
       //        will either need to insert something akin to

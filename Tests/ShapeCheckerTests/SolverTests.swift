@@ -17,6 +17,9 @@ final class Z3Tests: XCTestCase {
               .add(.mul(.element(1, of: s1), .literal(2)),
                    .div(.sub(.element(0, of: s0), .literal(3)), .literal(4)))),
        "(= 1 (+ (* (s1 1) 2) (div (- (s0 0) 3) 4)))"),
+      (.intGt(.literal(1), .literal(2)), "(> 1 2)"),
+      (.intGe(.literal(1), .literal(2)), "(>= 1 2)"),
+      (.not(.intGt(.literal(1), .literal(2))), "(not (> 1 2))"),
     ]
     for (expr, expectedDescription) in examples {
       XCTAssertEqual(expr.solverAST.description, expectedDescription)

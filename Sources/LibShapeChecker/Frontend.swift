@@ -7,8 +7,14 @@ enum BuiltinFunction {
 
   case intLiteralConstructor
   case intEqual
+  case intGreater
+  case intGreaterEqual
+  case intSmaller
+  case intSmallerEqual
   case intPlus
   case intMinus
+  case intMultiply
+  case intDivide
 
   case rankGetter
   case shapeGetter
@@ -166,11 +172,29 @@ fileprivate class Interpreter {
     case .intEqual:
       return binaryOp(trailingCount: 1) { .bool(.intEq($0, $1)) }
 
+    case .intGreater:
+      return binaryOp(trailingCount: 1) { .bool(.intGt($0, $1)) }
+
+    case .intGreaterEqual:
+      return binaryOp(trailingCount: 1) { .bool(.intGe($0, $1)) }
+
+    case .intSmaller:
+      return binaryOp(trailingCount: 1) { .bool(.not(.intGe($0, $1))) }
+
+    case .intSmallerEqual:
+      return binaryOp(trailingCount: 1) { .bool(.not(.intGt($0, $1))) }
+
     case .intPlus:
       return binaryOp(trailingCount: 1) { .int(.add($0, $1)) }
 
     case .intMinus:
       return binaryOp(trailingCount: 1) { .int(.sub($0, $1)) }
+
+    case .intMultiply:
+      return binaryOp(trailingCount: 1) { .int(.mul($0, $1)) }
+
+    case .intDivide:
+      return binaryOp(trailingCount: 1) { .int(.div($0, $1)) }
 
     case .intLiteralConstructor:
       guard args.count == 2 else {
@@ -236,10 +260,22 @@ fileprivate func getBuiltinFunctionRef(called name: String) -> BuiltinFunction? 
   switch name {
     case "$sSi2eeoiySbSi_SitFZ":
       return .intEqual
+    case "$sSi1goiySbSi_SitFZ":
+      return .intGreater
+    case "$sSi2geoiySbSi_SitFZ":
+      return .intGreaterEqual
+    case "$sSi1loiySbSi_SitFZ":
+      return .intSmaller
+    case "$sSi2leoiySbSi_SitFZ":
+      return .intSmallerEqual
     case "$sSi1poiyS2i_SitFZ":
       return .intPlus
     case "$sSi1soiyS2i_SitFZ":
       return .intMinus
+    case "$sSi1moiyS2i_SitFZ":
+      return .intMultiply
+    case "$sSi1doiyS2i_SitFZ":
+      return .intDivide
     case "$sSi22_builtinIntegerLiteralSiBI_tcfC":
       return .intLiteralConstructor
     case "check":

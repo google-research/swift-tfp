@@ -185,6 +185,10 @@ func >=(_ a: Z3Expr<Int>, _ b: Z3Expr<Int>) -> Z3Expr<Bool> {
   return binaryOp(a, b, Z3_mk_ge)
 }
 
+prefix func !(_ a: Z3Expr<Bool>) -> Z3Expr<Bool> {
+  return Z3Expr(a.ctx, Z3_mk_not(a.ctx.ctx, a.ast))
+}
+
 extension Z3Expr where T == [Int] {
   func call(_ arg: Z3Expr<Int>) -> Z3Expr<Int> {
     return Z3Expr<Int>(ctx, Z3_mk_app(ctx.ctx, Z3_to_func_decl(ctx.ctx, ast), 1, [arg.ast]))
