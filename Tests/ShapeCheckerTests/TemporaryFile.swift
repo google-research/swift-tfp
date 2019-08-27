@@ -39,7 +39,7 @@ extension XCTestCase {
     withTemporaryFile { tempFile in
       let process = Process()
       process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-      process.arguments = ["swiftc", "-emit-sil", "-o", tempFile.path, forFile]
+      process.arguments = ["swiftc", "-emit-silgen", "-o", tempFile.path, forFile]
       do {
         try process.run()
         process.waitUntilExit()

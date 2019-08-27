@@ -36,8 +36,8 @@ The tool is not super user-friendly at the moment, so there are a few manual ste
 I'm assuming that you have a file `example.swift` that you want to analyze.
 
 1. Make sure you defined `check` as told in the _Restrictions_ section.
-2. Run `swiftc -emit-sil -o example.sil example.swift`
-3. Run `swift run ShapeChecker example.sil`
+2. Run `swiftc -emit-silgen -o example.silgen example.swift`
+3. Run `swift run ShapeChecker example.silgen`
 
 For example, if `example.swift` contains the following:
 ```swift

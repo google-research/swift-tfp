@@ -4,6 +4,12 @@ typealias Register = String
 
 enum BuiltinFunction {
   case check
+
+  case intLiteralConstructor
+  case intEqual
+  case intPlus
+  case intMinus
+
   case rankGetter
   case shapeGetter
   case shapeSubscript
@@ -55,15 +61,23 @@ fileprivate class Interpreter {
       var updates: [AbstractValue?]?
 
       switch instrDef.instruction {
-      case let .integerLiteral(type, value):
-        guard case let .selectType(baseType, elem) = type,
-              case let .namedType(builtin) = baseType,
-              builtin == "Builtin", isIntType(elem) else { continue }
-        updates = [.int(.literal(value))]
 
-      case let .builtin(name, args, _):
-        updates = interpret(builtinInstruction: name,
-                            values: args.map{ valuation[$0.value] })
+      case let .beginBorrow(operand):
+        fallthrough
+      case let .copyValue(operand):
+        guard instrDef.result?.valueNames.count == 1 else {
+          fatalError("Expected a single result from an ownership instruction!")
+        }
+        // Propagate the valuation and unify the shape variables
+        updates = [valuation[operand.value]]
+        let resultReg = instrDef.result!.valueNames[0]
+        if let operandVar = variables.lookup(operand.value) {
+          variables[resultReg] = operandVar
+        }
+
+      case let .integerLiteral(type, value):
+        guard case .selectType(.namedType("Builtin"), "IntLiteral") = type else { continue }
+        updates = [.int(.literal(value))]
 
       case let .functionRef(name, _):
         if let builtin = getBuiltinFunctionRef(called: name) {
@@ -138,39 +152,44 @@ fileprivate class Interpreter {
     }
   }
 
-  func interpret(builtinInstruction op: String, values: [AbstractValue?]) -> [AbstractValue]? {
-    func asBinary(trailingArgs: Int = 0, _ f: (IntExpr, IntExpr) -> AbstractValue) -> [AbstractValue]? {
-      let inputs = values.compactMap{ $0 }
-      let expectedArgs = 2 + trailingArgs
-      guard values.count == expectedArgs && inputs.count == expectedArgs else { return nil }
+  func interpret(builtinFunction kind: BuiltinFunction, args: [Register]) -> [AbstractValue?]? {
+    func binaryOp(trailingCount: Int = 0, _ f: (IntExpr, IntExpr) -> AbstractValue) -> [AbstractValue?]? {
+      let values = args.compactMap{ valuation[$0] }
+      let expectedArgs = trailingCount + 2
+      guard args.count == expectedArgs && values.count >= 2 else { return nil }
       guard case let .int(lhs) = values[0] else { return nil }
       guard case let .int(rhs) = values[1] else { return nil }
       return [f(lhs, rhs)]
     }
-    switch op {
-    case "cmp_eq_Int64":
-      return asBinary{ .bool(.intEq($0, $1)) }
-    case "ssub_with_overflow_Int64":
-      return asBinary(trailingArgs: 1){ .tupleIntBool(.sub($0, $1)) }
-    case "sadd_with_overflow_Int64":
-      return asBinary(trailingArgs: 1){ .tupleIntBool(.add($0, $1)) }
-    default:
-      return nil
-    }
-  }
 
-  func interpret(builtinFunction kind: BuiltinFunction, args: [Register]) -> [AbstractValue?]? {
     switch kind {
+    case .intEqual:
+      return binaryOp(trailingCount: 1) { .bool(.intEq($0, $1)) }
+
+    case .intPlus:
+      return binaryOp(trailingCount: 1) { .int(.add($0, $1)) }
+
+    case .intMinus:
+      return binaryOp(trailingCount: 1) { .int(.sub($0, $1)) }
+
+    case .intLiteralConstructor:
+      guard args.count == 2 else {
+        fatalError("Int constructor expected two arguments")
+      }
+      return [valuation[args[0]]]
+
     case .shapeGetter:
       guard args.count == 1 else {
         fatalError("Shape getter expected a single argument!")
       }
       return [.list(.var(variables[args[0]]))]
+
     case .rankGetter:
       guard args.count == 1 else {
         fatalError("Rank getter expected a single argument!")
       }
       return [.int(.length(of: .var(variables[args[0]])))]
+
     case .shapeSubscript:
       guard args.count == 2 else {
         fatalError("Shape subscript expected two arguments")
@@ -184,6 +203,7 @@ fileprivate class Interpreter {
       constraints.append(.expr(.intGt(.length(of: shape), .literal(dim))))
       // NB: We need to have two returns, because the second one is a coroutine token
       return [.int(.element(dim, of: shape)), nil]
+
     case .shapeEqual:
       // NB: Third argument is the metatype
       guard args.count == 3 else {
@@ -196,6 +216,7 @@ fileprivate class Interpreter {
         fatalError("Expected shape arguments to shape equality operator!")
       }
       return [.bool(.listEq(a, b))]
+
     case .check:
       guard args.count == 1 else {
         fatalError("Check expects a single argument")
@@ -211,12 +232,16 @@ fileprivate class Interpreter {
   }
 }
 
-fileprivate func isIntType(_ name: String) -> Bool {
-  return ["Int1", "Int16", "Int32", "Int64", "Word"].contains(name)
-}
-
 fileprivate func getBuiltinFunctionRef(called name: String) -> BuiltinFunction? {
   switch name {
+    case "$sSi2eeoiySbSi_SitFZ":
+      return .intEqual
+    case "$sSi1poiyS2i_SitFZ":
+      return .intPlus
+    case "$sSi1soiyS2i_SitFZ":
+      return .intMinus
+    case "$sSi22_builtinIntegerLiteralSiBI_tcfC":
+      return .intLiteralConstructor
     case "check":
       return .check
     case "$s10TensorFlow0A0V5shapeAA0A5ShapeVvg":
