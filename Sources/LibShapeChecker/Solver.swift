@@ -9,7 +9,7 @@ func verify(_ constraints: [Constraint]) -> SolverResult {
   var shapeVars = Set<Var>()
   var trackers: [String: BoolExpr] = [:]
 
-  for constraint in normalize(constraints) {
+  for constraint in desugar(constraints) {
     switch constraint {
     case let .expr(expr):
       trackers[solver.assertAndTrack(expr.solverAST)] = expr
@@ -23,7 +23,7 @@ func verify(_ constraints: [Constraint]) -> SolverResult {
   // Additionally assert that all shapes are non-negative
   let zero = Z3Context.default.literal(0)
   for v in shapeVars {
-    solver.assert(forall { ListExpr.var(v).solverAST.call($0) >= zero })
+    solver.assert(forall { v.solverAST.call($0) >= zero })
   }
 
   switch solver.check() {
@@ -37,85 +37,38 @@ func verify(_ constraints: [Constraint]) -> SolverResult {
   }
 }
 
-////////////////////////////////////////////////////////////////////////////////
-// MARK: - Expression normalization
-//
-// It is difficult to represent some of the constraints we support in Z3 directly,
-// so we destruct some of them into a kind of a normal form. The differences from
-// the stock Constraint grammar is that:
-// - BoolExpr.listEqual is not allowed (all shapes that are equal get replaced
-//   with the same variable instead).
-// - ListExpr.literal is not allowed (literals are desugared into a list of
-//   dim-wise constraints).
-
-func normalize(_ constraints: [Constraint]) -> [Constraint] {
-  return Normalizer().normalize(constraints)
-}
-
-fileprivate class Normalizer {
+// Try to rewrite the system of constraints to make it easier to process within Z3.
+// Right now the only transformation performed here is that constraints of the form
+// x.shape == y.shape are eliminated, and all occurences of one of those shape
+// shape variables are replaced with the other one. This let us avoid instantiating
+// many quantifiers for those simple formulas.
+func desugar(_ constraints: [Constraint]) -> [Constraint] {
   var equalityClasses = DefaultDict<Var, UnionFind<Var>>{ UnionFind($0) }
 
-  func normalize(_ constraints: [Constraint]) -> [Constraint] {
-    let desugared: [Constraint] = constraints.flatMap { (constraint: Constraint) -> [Constraint] in
-      switch constraint {
-      case let .expr(expr):
-        let (newExpr, newConstraints) = normalize(expr)
-        return newConstraints + (newExpr != nil ? [.expr(newExpr!)] : [])
-
-      case .call(_, _, _):
-        return []
+  let desugared: [Constraint] = constraints.compactMap { (constraint: Constraint) -> Constraint? in
+    switch constraint {
+    case let .expr(expr):
+      if case let .listEq(.var(lhs), .var(rhs)) = expr {
+        union(equalityClasses[lhs], equalityClasses[rhs])
+        return nil
       }
-    }
-
-    return desugared.map{ substitute($0, using: { representative(equalityClasses[$0]) }) }
-  }
-
-  func normalize(_ e: BoolExpr) -> (BoolExpr?, [Constraint]) {
-    switch e {
-    // Integer expressions are always in normal forms
-    case .intEq(_, _): fallthrough
-    case .intGt(_, _): fallthrough
-    case .intGe(_, _): fallthrough
-    case .intLt(_, _): fallthrough
-    case .intLe(_, _): return (e, [])
-    // This is the most interesting case, and it's really the one when we have
-    // to do most of the work. All because of the simple fact that you can't
-    // express function equality without quantifiers in Z3.
-    case let .listEq(lhs, rhs):
-      switch (lhs, rhs) {
-      case let (.var(lhsVar), .var(rhsVar)):
-        union(equalityClasses[lhsVar], equalityClasses[rhsVar])
-        return (nil, [])
-      case let (.literal(exprs), .var(v)): fallthrough
-      case let (.var(v), .literal(exprs)):
-        let lengthConstraint = [Constraint.expr(.intEq(.length(of: .var(v)), .literal(exprs.count)))]
-        let elementConstraints = exprs.enumerated().compactMap {
-          (offset: Int, maybeExpr: IntExpr?) -> Constraint? in
-          guard let expr = maybeExpr else { return nil }
-          return .expr(.intEq(.element(offset, of: .var(v)), expr))
-        }
-        return (nil, lengthConstraint + elementConstraints)
-      case let (.literal(lhsExprs), .literal(rhsExprs)):
-        let lengthConstraint = [Constraint.expr(.intEq(.literal(lhsExprs.count), .literal(rhsExprs.count)))]
-        let elementConstraints = zip(lhsExprs, rhsExprs).compactMap {
-          (maybeExprs: (IntExpr?, IntExpr?)) -> Constraint? in
-          switch (maybeExprs.0, maybeExprs.1) {
-          case let (.some(lhsExpr), .some(rhsExpr)):
-            return .expr(.intEq(lhsExpr, rhsExpr))
-          case let (.some(expr), .none): fallthrough
-          case let (.none, .some(expr)):
-            return .expr(.intGe(expr, .literal(0)))
-          case (.none, .none):
-            return nil
-          }
-        }
-        return (nil, lengthConstraint + elementConstraints)
-      }
+      return .expr(expr)
+    case .call(_, _, _):
+      return nil
     }
   }
+
+  return desugared.map{ substitute($0, using: { representative(equalityClasses[$0]) }) }
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// Z3 translation
+
 fileprivate var nextIntVariable = count(from: 0) >>> String.init >>> Z3Context.default.make(intVariable:)
+
+extension Var {
+  var solverAST: Z3Expr<[Int]> { Z3Context.default.make(listVariable: description) }
+}
 
 extension IntExpr {
   var solverAST: Z3Expr<Int> {
@@ -130,11 +83,12 @@ extension IntExpr {
         return Z3Context.default.literal(shapeValue.count)
       }
     case let .element(offset, of: list):
+      // NB: Negative offsets are not supported yet, so we treat them as "any value"
+      //     so that they're never involved in a contradiction.
       guard offset >= 0 else { return nextIntVariable() }
       switch list {
       case let .var(v):
-        let listVar = Z3Context.default.make(listVariable: "\(v)")
-        return listVar.call(Z3Context.default.literal(offset))
+        return v.solverAST.call(Z3Context.default.literal(offset))
       case let .literal(exprs):
         // NB: Out of bounds accesses will trigger a failure through a different
         //     set of assertions anyway, so no need to check for that here.
@@ -157,6 +111,8 @@ extension IntExpr {
 extension BoolExpr {
   var solverAST: Z3Expr<Bool> {
     switch self {
+    case let .and(subexprs):
+      return z3and(subexprs.map{ $0.solverAST })
     case let .intEq(lhs, rhs):
       return lhs.solverAST == rhs.solverAST
     case let .intGt(lhs, rhs):
@@ -167,19 +123,41 @@ extension BoolExpr {
       return lhs.solverAST < rhs.solverAST
     case let .intLe(lhs, rhs):
       return lhs.solverAST <= rhs.solverAST
-    case .listEq(_, _):
-      fatalError(".solverAST should only be accessed on normalized assertions")
+    case let .listEq(lhs, rhs):
+      switch (lhs, rhs) {
+      case let (.var(lhsVar), .var(rhsVar)):
+        return forall { lhsVar.solverAST.call($0) == rhsVar.solverAST.call($0) }
+      case let (.literal(exprs), .var(v)): fallthrough
+      case let (.var(v), .literal(exprs)):
+        let lengthConstraint = BoolExpr.intEq(.length(of: .var(v)), .literal(exprs.count))
+        let elementConstraints = exprs.enumerated().compactMap {
+          (offset: Int, maybeExpr: IntExpr?) -> BoolExpr? in
+          guard let expr = maybeExpr else { return nil }
+          return .intEq(.element(offset, of: .var(v)), expr)
+        }
+        return BoolExpr.and([lengthConstraint] + elementConstraints).solverAST
+      case let (.literal(lhsExprs), .literal(rhsExprs)):
+        let lengthConstraint = BoolExpr.intEq(.literal(lhsExprs.count), .literal(rhsExprs.count))
+        let elementConstraints = zip(lhsExprs, rhsExprs).compactMap {
+          (maybeExprs: (IntExpr?, IntExpr?)) -> BoolExpr? in
+          switch (maybeExprs.0, maybeExprs.1) {
+          case let (.some(lhsExpr), .some(rhsExpr)):
+            return .intEq(lhsExpr, rhsExpr)
+          case let (.some(expr), .none): fallthrough
+          case let (.none, .some(expr)):
+            // FIXME: This is a bit overzealous, because we don't do any verification
+            //        to determine whether the assertions are statements about lists
+            //        of integers (where having negative elements is fine) or shapes.
+            return .intGe(expr, .literal(0))
+          case (.none, .none):
+            return nil
+          }
+        }
+        return BoolExpr.and([lengthConstraint] + elementConstraints).solverAST
+      }
     }
   }
 }
 
-extension ListExpr {
-  var solverAST: Z3Expr<[Int]> {
-    switch self {
-    case let .var(v):
-      return Z3Context.default.make(listVariable: "\(v)")
-    case .literal(_):
-      fatalError(".solverAST should only be accessed on normalized assertions")
-    }
-  }
-}
+// NB: No instance for ListExpr.solverAST, because there's no way to
+//     instantiate the AST for literals without significant side effects.

@@ -197,6 +197,11 @@ prefix func !(_ a: Z3Expr<Bool>) -> Z3Expr<Bool> {
   return Z3Expr(a.ctx, Z3_mk_not(a.ctx.ctx, a.ast))
 }
 
+func z3and(_ exprs: [Z3Expr<Bool>]) -> Z3Expr<Bool> {
+  guard let anyExpr = exprs.first else { fatalError("Empty and expression") }
+  return Z3Expr(anyExpr.ctx, Z3_mk_and(anyExpr.ctx.ctx, UInt32(exprs.count), exprs.map{ $0.ast }))
+}
+
 extension Z3Expr where T == [Int] {
   func call(_ arg: Z3Expr<Int>) -> Z3Expr<Int> {
     return Z3Expr<Int>(ctx, Z3_mk_app(ctx.ctx, Z3_to_func_decl(ctx.ctx, ast), 1, [arg.ast]))

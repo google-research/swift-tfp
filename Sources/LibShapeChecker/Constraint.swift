@@ -26,6 +26,7 @@ public indirect enum ListExpr: Equatable {
 }
 
 public indirect enum BoolExpr: Equatable {
+  case and([BoolExpr])
   case intEq(IntExpr, IntExpr)
   case intGt(IntExpr, IntExpr)
   case intGe(IntExpr, IntExpr)
@@ -83,6 +84,8 @@ public func substitute(_ e: ListExpr, using s: Substitution) -> ListExpr {
 
 public func substitute(_ e: BoolExpr, using s: Substitution) -> BoolExpr {
   switch e {
+  case let .and(subexprs):
+    return .and(subexprs.map{ substitute($0, using: s) })
   case let .intEq(lhs, rhs):
     return .intEq(substitute(lhs, using: s), substitute(rhs, using: s))
   case let .intGt(lhs, rhs):
@@ -150,6 +153,8 @@ extension ListExpr: CustomStringConvertible {
 extension BoolExpr: CustomStringConvertible {
   public var description: String {
     switch self {
+    case let .and(subexprs):
+      return subexprs.map{ "(\($0.description))" }.joined(separator: " and ")
     case let .intEq(lhs, rhs):
       return "\(lhs) == \(rhs)"
     case let .intGt(lhs, rhs):
