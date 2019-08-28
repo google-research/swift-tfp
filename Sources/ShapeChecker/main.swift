@@ -2,6 +2,7 @@
 import SIL
 import SPMUtility
 
+@available(macOS 10.13, *)
 func main() {
   let parser = ArgumentParser(usage: "<SIL path>",
                               overview: "Static analysis tool for verifying tensor shapes in Swift programs")
@@ -18,42 +19,43 @@ func main() {
   let fileName = args.get(fileNameOpt)!
   let showSignatures = args.get(showSignaturesOpt) ?? false
 
-  let module: Module
   do {
-    module = try Module.parse(fromSILPath: fileName)
-  } catch {
-    print("Error encountered during SIL module parsing: ", terminator: "")
-    print(error)
-    return
-  }
-
-  let analyzer = Analyzer()
-  analyzer.analyze(module: module)
-  for (fn, signature) in analyzer.environment.sorted(by: { $0.0 < $1.0 }) {
-    guard !signature.constraints.isEmpty else { continue }
-    print("")
-    print(fn)
-    if (showSignatures) {
-      print(signature.prettyDescription)
-    }
-    let constraints = instantiate(constraintsOf: fn, inside: analyzer.environment)
-    switch verify(constraints) {
-    case .sat:
-      print("✅ Constraints are satisfiable!")
-    case .unknown:
-      print("❔ Can't solve the constraint system")
-    case let .unsat(maybeCore):
-      if let core = maybeCore {
-        print("❌ Derived a contradiction from:")
-        for expr in core {
-          print("  - \(expr)")
+    try withSIL(forFile: fileName) { module in
+      let analyzer = Analyzer()
+      analyzer.analyze(module: module)
+      for (fn, signature) in analyzer.environment.sorted(by: { $0.0 < $1.0 }) {
+        guard !signature.constraints.isEmpty else { continue }
+        print("")
+        print(fn)
+        if (showSignatures) {
+          print(signature.prettyDescription)
         }
-      } else {
-        print("⚠️ Found a contradiction, but I can't explain!")
+        let constraints = instantiate(constraintsOf: fn, inside: analyzer.environment)
+        switch verify(constraints) {
+        case .sat:
+          print("✅ Constraints are satisfiable!")
+        case .unknown:
+          print("❔ Can't solve the constraint system")
+        case let .unsat(maybeCore):
+          if let core = maybeCore {
+            print("❌ Derived a contradiction from:")
+            for expr in core {
+              print("  - \(expr)")
+            }
+          } else {
+            print("⚠️ Found a contradiction, but I can't explain!")
+          }
+        }
       }
     }
+  } catch {
+    print("An error occured: \(error)")
   }
 
 }
 
-main()
+if #available(macOS 10.13, *) {
+  main()
+} else {
+  print("Unsupported platform!")
+}

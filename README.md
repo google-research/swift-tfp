@@ -6,7 +6,6 @@ Static analysis for tensor shapes in S4TF programs
 
 - Limited to a single file only
 - Only analyzes functions with a single basic block
-- Constraints are only propagated through function calls when the callee is defined before the caller
 - The use of `assert` statements would violate the "single basic block" rule, so for now, please paste the following code into your file (can be at the very bottom), and use `check` instead:
 
 ```swift
@@ -31,12 +30,8 @@ _TODO: Write down the exact grammar_
 
 ## How to use
 
-The tool is not super user-friendly at the moment, so there are a few manual steps you will have to perform.
-I'm assuming that you have a file `example.swift` that you want to analyze.
-
-1. Make sure you defined `check` as told in the _Restrictions_ section.
-2. Run `swiftc -emit-silgen -o example.silgen example.swift`
-3. Run `swift run ShapeChecker example.silgen`
+To analyze a file `example.swift` execute `swift run ShapeChecker example.swift`.
+Don't forget to define `check` as mentioned in the _Restrictions_ section.
 
 For example, if `example.swift` contains the following:
 ```swift
@@ -120,5 +115,3 @@ verify
 
 What you see here is a shape signature of the matmul function.
 The first part of the output is a list of shape constraints that are necessary for its correctness, and the `(s1, s2) -> s3` part describes that the variables `s1` and `s2` correspond to the shapes of two arguments, while `s3` corresponds to the output shape.
-
-> Tip: All shape variables have an `s` prefix, and all dimension variables have the `d` prefix.
