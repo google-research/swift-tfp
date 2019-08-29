@@ -1,9 +1,8 @@
 * Support for regular assertions
 * Broadcasting
-* Propagation of abstract values through function calls (just Int would be already helpful)
 * Negative dimension indices
+* Emit warnings from the frontend
 * Support for structs
 * Propagation of source information through the system
-* Emit warnings from the frontend
 * Control flow support
 * More efficient verification (e.g. start with roots and only descend if failures are found)

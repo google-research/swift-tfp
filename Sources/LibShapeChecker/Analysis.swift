@@ -1,10 +1,9 @@
 import SIL
 
 public struct FunctionSummary {
-  // NB: Can be nil if the argument or return is not a tensor,
-  //     or wasn't used in any constraint.
-  let argVars: [Var?]
-  let retVar: Var?
+  let argVars: [Var?] // None only for arguments of unsupported types
+  let retExpr: Expr?  // None for returns of unsupported types and when we
+                      // don't know anything interesting about the returned value
   public let constraints: [Constraint]
 }
 
@@ -16,9 +15,6 @@ public class Analyzer {
   public init() {}
 
   public func analyze(module: Module) {
-    // TODO: Sort the functions according to the call chain.
-    //       Right now the analysis result depends on their order,
-    //       which shouldn't be the case!
     for f in module.functions {
       analyze(f)
     }
@@ -37,6 +33,36 @@ public class Analyzer {
 
 }
 
+func simplify(_ constraints: [Constraint]) -> [Constraint] {
+  var equalityClasses = DefaultDict<Var, UnionFind<Var>>{ UnionFind($0) }
+
+  let subset: [Constraint] = constraints.compactMap { (constraint: Constraint) -> Constraint? in
+    switch constraint {
+    case let .expr(expr):
+      switch expr {
+      case let .listEq(.var(lhs), .var(rhs)):
+        union(equalityClasses[.list(lhs)], equalityClasses[.list(rhs)])
+        return nil
+      case let .intEq(.var(lhs), .var(rhs)):
+        union(equalityClasses[.int(lhs)], equalityClasses[.int(rhs)])
+        return nil
+      case let .boolEq(.var(lhs), .var(rhs)):
+        union(equalityClasses[.bool(lhs)], equalityClasses[.bool(rhs)])
+        return nil
+      default:
+        return .expr(expr)
+      }
+    case .call(_, _, _):
+      return nil
+    }
+  }
+
+  return subset.map {
+    substitute($0, using: { representative(equalityClasses[$0]).expr })
+  }
+}
+
+
 ////////////////////////////////////////////////////////////////////////////////
 // MARK: - Instantiation of constraints for the call chain
 
@@ -46,60 +72,65 @@ public func instantiate(constraintsOf name: String,
   return instantiator.constraints
 }
 
-class ConstraintInstantiator {
-  typealias Substitution = DefaultDict<Var, Var>
+fileprivate func ==(_ a: Expr, _ b: Expr) -> BoolExpr {
+  switch (a, b) {
+  case let (.int(a), .int(b)): return .intEq(a, b)
+  case let (.list(a), .list(b)): return .listEq(a, b)
+  case let (.bool(a), .bool(b)): return .boolEq(a, b)
+  default: fatalError("Equating expressions of different types!")
+  }
+}
 
+class ConstraintInstantiator {
   let environment: Environment
   var constraints: [Constraint] = []
   var callStack = Set<String>() // To sure we don't recurse
-
-  let freshVar = count(from: 0) >>> Var.init
-
+  let freshVar = makeVariableGenerator()
 
   init(_ name: String,
        _ env: Environment) {
     self.environment = env
     guard let summary = environment[name] else { return }
-    let _ = apply(name, to: summary.argVars.map{ $0.map { _ in freshVar() } })
+    let _ = apply(name, to: summary.argVars.map{ $0.map{ freshVar($0).expr } })
   }
 
-  func apply(_ name: String, to args: [Var?]) -> Var? {
+  func apply(_ name: String, to args: [Expr?]) -> Expr? {
     guard let summary = environment[name] else { return nil }
-    guard !callStack.contains(name) else { return nil }
 
+    guard !callStack.contains(name) else { return nil }
     callStack.insert(name)
     defer { callStack.remove(name) }
 
-    // Instantiate the constraint system for the callee, by:
-    var substitution = Substitution{ [weak self] _ in self!.freshVar() }
-    // NB: We pop at the end of the function, hence no defer here.
+    // Instantiate the constraint system for the callee.
+    var varMap = DefaultDict<Var, Var>(withDefault: freshVar)
+    let subst = { varMap[$0].expr }
 
-    // 1. Substituting the formal argument variables for the actual variables.
     assert(summary.argVars.count == args.count)
     for (maybeFormal, maybeActual) in zip(summary.argVars, args) {
       // NB: Only instantiate the mapping for args that have some constraints
       //     associated with them.
       guard let formal = maybeFormal else { continue }
       guard let actual = maybeActual else { continue }
-      substitution[formal] = actual
+      constraints.append(.expr(varMap[formal].expr == actual))
     }
 
-    // 2. Replacing the variables in the body of the summary with fresh versions.
+    // Replace the variables in the body of the summary with fresh ones to avoid conflicts.
     for constraint in summary.constraints {
       switch constraint {
       case let .expr(expr):
-        constraints.append(.expr(substitute(expr, using: { substitution[$0] })))
+        constraints.append(.expr(substitute(expr, using: subst)))
       case let .call(name, args, maybeResult):
-        let maybeApplyResult = apply(name, to: args.map{ $0.map{ substitution[$0] } })
+        // TODO: Add an extension on Substitution type
+        let maybeApplyResult = apply(name, to: args.map{ $0.map{substitute($0, using: subst)} })
         if let applyResult = maybeApplyResult,
            let result = maybeResult {
-          substitution[result] = applyResult
+          constraints.append(.expr(substitute(result, using: subst) == applyResult))
         }
       }
     }
 
-    guard let result = summary.retVar else { return nil }
-    return substitution[result]
+    guard let result = summary.retExpr else { return nil }
+    return substitute(result, using: subst)
   }
 }
 
@@ -107,9 +138,8 @@ class ConstraintInstantiator {
 // MARK: - CustomStringConvertible instances
 
 extension FunctionSummary: CustomStringConvertible {
-  fileprivate func describeOptVar(_ v: Var?) -> String { v == nil ? "*" : v!.description }
   fileprivate var signature: String {
-    "(" + argVars.map(describeOptVar).joined(separator: ", ") + ") -> " + describeOptVar(retVar)
+    "(" + argVars.map{ $0?.description ?? "*" }.joined(separator: ", ") + ") -> " + (retExpr?.description ?? "*")
   }
   public var description: String {
     guard !constraints.isEmpty else { return signature }

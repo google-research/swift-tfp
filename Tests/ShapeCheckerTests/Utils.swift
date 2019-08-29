@@ -32,6 +32,16 @@ func matmul(_ x: Tensor<Float>, _ y: Tensor<Float>) -> Tensor<Float> {
 
 """
 
+let randnCode = """
+
+func randn(_ shape: TensorShape) -> Tensor<Float> {
+  let result = Tensor<Float>(randomNormal: shape)
+  check(result.shape == shape)
+  return result
+}
+
+"""
+
 extension XCTestCase {
   func getFunction(called name: String, _ module: Module) -> Function? {
     guard let f = module.functions.first(where: { $0.name == name }) else {

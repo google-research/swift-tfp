@@ -33,37 +33,68 @@ func abstract(_ block: Block) -> FunctionSummary? {
   default:
     return nil
   }
-  let lookupVar = { interpreter.variables.lookup($0) }
-  return FunctionSummary(argVars: block.arguments.map{ lookupVar($0.valueName) },
-                         retVar: lookupVar(result),
+  return FunctionSummary(argVars: block.arguments.map { interpreter.valuation[$0.valueName]?.variable },
+                         retExpr: interpreter.valuation[result]?.expr,
                          constraints: interpreter.constraints)
 }
 
 // This class is really a poor man's state monad
 fileprivate class Interpreter {
-  indirect enum AbstractValue {
+  enum AbstractValue {
     case int(IntExpr)
     case list(ListExpr)
     case bool(BoolExpr)
-    case tupleIntBool(IntExpr)
+    case tensor(withShape: ListVar)
 
     case builtinFunction(_ kind: BuiltinFunction)
     case function(_ name: String)
+
+    var expr: Expr? {
+      switch self {
+      case let .int(expr): return .int(expr)
+      case let .list(expr): return .list(expr)
+      case let .bool(expr): return .bool(expr)
+      case let .tensor(withShape: v): return .list(.var(v))
+      default: return nil
+      }
+    }
+
+    var variable: Var? {
+      switch self {
+      case let .int(.var(v)): return .int(v)
+      case let .list(.var(v)): return .list(v)
+      case let .bool(.var(v)): return .bool(v)
+      case let .tensor(withShape: v): return .list(v)
+      default: return nil
+      }
+    }
   }
 
   var constraints: [Constraint] = []
-  var variables: DefaultDict<Register, Var>!
   var valuation: [Register: AbstractValue] = [:]
-  var instructions: Array<InstructionDef>.Iterator
-  let nextVar = count(from: 0) >>> Var.init
+  let freshName = count(from: 0)
 
-  init(_ block: Block) {
-    self.instructions = block.instructionDefs.makeIterator()
-    self.variables = DefaultDict{ [weak self] _ in self!.nextVar() }
-    process(block)
+  func freshVar(_ type: Type) -> AbstractValue? {
+    switch removeOwnership(type) {
+    case .namedType("Int"): return .int(.var(IntVar(freshName())))
+    case .namedType("Bool"): return .bool(.var(BoolVar(freshName())))
+    case .namedType("TensorShape"): return .list(.var(ListVar(freshName())))
+    case let t where isTensorType(t): return freshTensorValue()
+    default: return nil
+    }
   }
 
-  func process(_ block: Block) {
+  func freshTensorValue() -> AbstractValue {
+    return .tensor(withShape: ListVar(freshName()))
+  }
+
+  init(_ block: Block) {
+    var instructions = block.instructionDefs.makeIterator()
+
+    for argument in block.arguments {
+      valuation[argument.valueName] = freshVar(argument.type)
+    }
+
     while let instrDef = instructions.next() {
       var updates: [AbstractValue?]?
 
@@ -75,12 +106,17 @@ fileprivate class Interpreter {
         guard instrDef.result?.valueNames.count == 1 else {
           fatalError("Expected a single result from an ownership instruction!")
         }
-        // Propagate the valuation and unify the shape variables
-        updates = [valuation[operand.value]]
-        let resultReg = instrDef.result!.valueNames[0]
-        if let operandVar = variables.lookup(operand.value) {
-          variables[resultReg] = operandVar
-        }
+        // NB: It is important to make sure the result has the same valuation as
+        //     the operand, because the following might happen:
+        //
+        //     %1 = unknown_instruction()
+        //     %2 = copy_value %1
+        //     %3 = f(%2)                 // This implies some constraints on %1
+        //     %4 = copy_value %1
+        //     %5 = g(%4)                 // This implies more constraints on %1
+        //
+        //     The constraints coming from f and g calls might be useful for our purposes.
+        updates = [valuation[operand.value, setDefault: freshVar(operand.type)]]
 
       case let .integerLiteral(type, value):
         guard case .selectType(.namedType("Builtin"), "IntLiteral") = type else { continue }
@@ -122,12 +158,12 @@ fileprivate class Interpreter {
           }
           let result = results[0]
 
-          guard case let .functionType(_, resultType) = unwrapFunctionType(fnType) else {
+          guard case let .functionType(argTypes, resultType) = unwrapFunctionType(fnType) else {
             fatalError("Expected a function type, got: \(fnType)")
           }
           constraints.append(.call(name,
-                                   args.map(variables.lookup),
-                                   isTensorType(resultType) ? variables[result] : nil))
+                                   zip(argTypes, args).map{ valuation[$0.1, setDefault: freshVar($0.0)]?.expr },
+                                   valuation[result, setDefault: freshVar(resultType)]?.expr))
         case let .builtinFunction(kind):
           updates = interpret(builtinFunction: kind, args: args)
         case nil:
@@ -148,11 +184,6 @@ fileprivate class Interpreter {
         default:
           break
         }
-
-      case let .tupleExtract(operand, decl):
-        guard case let .tupleIntBool(fst) = valuation[operand.value] else { continue }
-        guard decl == 0 else { continue }
-        updates = [.int(fst)]
 
       default:
         break
@@ -223,13 +254,17 @@ fileprivate class Interpreter {
       guard args.count == 1 else {
         fatalError("Shape getter expected a single argument!")
       }
-      return [.list(.var(variables[args[0]]))]
+      guard case let .tensor(withShape: shapeVar) =
+          valuation[args[0], setDefault: freshTensorValue()] else { return nil }
+      return [.list(.var(shapeVar))]
 
     case .rankGetter:
       guard args.count == 1 else {
         fatalError("Rank getter expected a single argument!")
       }
-      return [.int(.length(of: .var(variables[args[0]])))]
+      guard case let .tensor(withShape: shapeVar) =
+          valuation[args[0], setDefault: freshTensorValue()] else { return nil }
+      return [.int(.length(of: .var(shapeVar)))]
 
     case .shapeSubscript:
       guard args.count == 2 else {
@@ -330,5 +365,25 @@ fileprivate func unwrapFunctionType(_ type: Type) -> Type? {
     return type
   default:
     return nil
+  }
+}
+
+func removeOwnership(_ type: Type) -> Type {
+  switch type {
+  case let .withOwnership(_, subtype): return removeOwnership(subtype)
+  default: return type
+  }
+}
+
+fileprivate extension Dictionary {
+  subscript(key: Key, setDefault defaultValue: @autoclosure () -> Value?) -> Value? {
+    mutating get {
+      if let value = self[key] {
+        return value
+      } else {
+        self[key] = defaultValue()
+        return self[key]
+      }
+    }
   }
 }

@@ -177,6 +177,10 @@ func ==(_ a: Z3Expr<Int>, _ b: Z3Expr<Int>) -> Z3Expr<Bool> {
   return binaryOp(a, b, Z3_mk_eq)
 }
 
+func ==(_ a: Z3Expr<Bool>, _ b: Z3Expr<Bool>) -> Z3Expr<Bool> {
+  return binaryOp(a, b, Z3_mk_eq)
+}
+
 func >(_ a: Z3Expr<Int>, _ b: Z3Expr<Int>) -> Z3Expr<Bool> {
   return binaryOp(a, b, Z3_mk_gt)
 }

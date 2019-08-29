@@ -51,13 +51,14 @@ final class FrontendTests: XCTestCase {
   func testAssertRecovery() {
     func makeCheck(_ cond: String) -> String {
       return """
-        @_silgen_name("f") func f(x: Tensor<Float>, y: Tensor<Float>, z: Tensor<Float>, i: Int) {
+        @_silgen_name("f") func f(x: Tensor<Float>, y: Tensor<Float>, i: Int) {
           check(\(cond))
         }
       """
     }
-    let xVar = ListExpr.var(Var(0))
-    let yVar = ListExpr.var(Var(1))
+    let xVar = ListExpr.var(ListVar(0))
+    let yVar = ListExpr.var(ListVar(1))
+    let iVar = IntExpr.var(IntVar(2))
     let xyNotScalar: [BoolExpr] = [
       .intGt(.length(of: xVar), .literal(0)),
       .intGt(.length(of: yVar), .literal(0)),
@@ -97,7 +98,7 @@ final class FrontendTests: XCTestCase {
       ("x.shape == y.shape", [.listEq(xVar, yVar)]),
       ("x.shape == [1, 2 + y.shape[0], i]", [
         .intGt(.length(of: yVar), .literal(0)),
-        .listEq(xVar, .literal([.literal(1), .add(.literal(2), .element(0, of: yVar)), nil]))
+        .listEq(xVar, .literal([.literal(1), .add(.literal(2), .element(0, of: yVar)), iVar]))
       ])
     ]
     for (cond, expectedExprs) in asserts {

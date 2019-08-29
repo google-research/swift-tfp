@@ -6,16 +6,21 @@ enum SolverResult {
 
 func verify(_ constraints: [Constraint]) -> SolverResult {
   let solver = Z3Context.default.makeSolver()
-  var shapeVars = Set<Var>()
+  var shapeVars = Set<ListVar>()
   var trackers: [String: BoolExpr] = [:]
 
-  for constraint in desugar(constraints) {
+  for constraint in simplify(constraints) {
     switch constraint {
     case let .expr(expr):
       trackers[solver.assertAndTrack(expr.solverAST)] = expr
       // Perform a no-op substitution that has a side effect of gathering
       // all variables appearing in a formula.
-      let _ = substitute(expr, using: { shapeVars.insert($0); return $0 })
+      let _ = substitute(expr, using: {
+        if case let .list(v) = $0 {
+          shapeVars.insert(v)
+        }
+        return nil
+      })
     case .call(_, _, _):
       break
     }
@@ -37,42 +42,28 @@ func verify(_ constraints: [Constraint]) -> SolverResult {
   }
 }
 
-// Try to rewrite the system of constraints to make it easier to process within Z3.
-// Right now the only transformation performed here is that constraints of the form
-// x.shape == y.shape are eliminated, and all occurences of one of those shape
-// shape variables are replaced with the other one. This let us avoid instantiating
-// many quantifiers for those simple formulas.
-func desugar(_ constraints: [Constraint]) -> [Constraint] {
-  var equalityClasses = DefaultDict<Var, UnionFind<Var>>{ UnionFind($0) }
-
-  let desugared: [Constraint] = constraints.compactMap { (constraint: Constraint) -> Constraint? in
-    switch constraint {
-    case let .expr(expr):
-      if case let .listEq(.var(lhs), .var(rhs)) = expr {
-        union(equalityClasses[lhs], equalityClasses[rhs])
-        return nil
-      }
-      return .expr(expr)
-    case .call(_, _, _):
-      return nil
-    }
-  }
-
-  return desugared.map{ substitute($0, using: { representative(equalityClasses[$0]) }) }
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 // Z3 translation
 
 fileprivate var nextIntVariable = count(from: 0) >>> String.init >>> Z3Context.default.make(intVariable:)
 
-extension Var {
+extension ListVar {
   var solverAST: Z3Expr<[Int]> { Z3Context.default.make(listVariable: description) }
+}
+
+extension IntVar {
+  var solverAST: Z3Expr<Int> { Z3Context.default.make(intVariable: description) }
+}
+
+extension BoolVar {
+  var solverAST: Z3Expr<Bool> { Z3Context.default.make(boolVariable: description) }
 }
 
 extension IntExpr {
   var solverAST: Z3Expr<Int> {
     switch self {
+    case let .var(v):
+      return v.solverAST
     case let .literal(value):
       return Z3Context.default.literal(value)
     case let .length(of: list):
@@ -111,6 +102,8 @@ extension IntExpr {
 extension BoolExpr {
   var solverAST: Z3Expr<Bool> {
     switch self {
+    case let .var(v):
+      return v.solverAST
     case let .and(subexprs):
       return z3and(subexprs.map{ $0.solverAST })
     case let .intEq(lhs, rhs):
@@ -155,6 +148,8 @@ extension BoolExpr {
         }
         return BoolExpr.and([lengthConstraint] + elementConstraints).solverAST
       }
+    case let .boolEq(lhs, rhs):
+      return lhs.solverAST == rhs.solverAST
     }
   }
 }

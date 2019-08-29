@@ -24,7 +24,8 @@ func main() {
       let analyzer = Analyzer()
       analyzer.analyze(module: module)
       for (fn, signature) in analyzer.environment.sorted(by: { $0.0 < $1.0 }) {
-        guard !signature.constraints.isEmpty else { continue }
+        let nontrivialSignature = signature.retExpr != nil && signature.argVars.contains(where: { $0 != nil })
+        guard !signature.constraints.isEmpty || nontrivialSignature else { continue }
         print("")
         print(fn)
         if (showSignatures) {

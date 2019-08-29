@@ -4,9 +4,9 @@ import XCTest
 
 @available(macOS 10.13, *)
 final class Z3Tests: XCTestCase {
-  let s0 = ListExpr.var(Var(0))
-  let s1 = ListExpr.var(Var(1))
-  let s2 = ListExpr.var(Var(2))
+  let s0 = ListExpr.var(ListVar(0))
+  let s1 = ListExpr.var(ListVar(1))
+  let s2 = ListExpr.var(ListVar(2))
 
   func testExprTranslation() {
     let examples: [(BoolExpr, String)] = [
@@ -67,8 +67,48 @@ final class Z3Tests: XCTestCase {
     ]))
   }
 
+  func testCustomPredicate() {
+    let code = """
+    func pred(_ x : TensorShape) -> Bool {
+      return x[0] == 2
+    }
+
+    @_silgen_name("f")
+    func f(_ x: Tensor<Float>) {
+      check(x.shape[0] == 3)
+      check(pred(x.shape))
+    }
+    """
+    withSIL(forSource: code) { module in
+      let analyzer = Analyzer()
+      analyzer.analyze(module: module)
+      let constraints = instantiate(constraintsOf: "f", inside: analyzer.environment)
+      assertUnsat(verify(constraints))
+    }
+  }
+
+  func testFactory() {
+    let code = """
+    @_silgen_name("f")
+    func f() {
+      let x = randn([2, 3])
+      check(x.shape[0] == 3)
+    }
+    """
+    withSIL(forSource: randnCode + code) { module in
+      let analyzer = Analyzer()
+      analyzer.analyze(module: module)
+      let constraints = instantiate(constraintsOf: "f", inside: analyzer.environment)
+      assertUnsat(verify(constraints))
+    }
+  }
+
   static var allTests = [
     ("testExprTranslation", testExprTranslation),
+    ("testNonNegativeShapes", testNonNegativeShapes),
+    ("testLists", testLists),
+    ("testCustomPredicate", testCustomPredicate),
+    ("testFactory", testFactory),
   ]
 }
 
