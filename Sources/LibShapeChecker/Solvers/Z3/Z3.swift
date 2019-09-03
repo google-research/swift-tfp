@@ -47,7 +47,7 @@ class Z3Context {
 class Z3Solver: CustomStringConvertible {
   var ctx: Z3Context
   var solver: Z3_solver
-  let nextTrackVarName = count(from: 0) >>> { "tr\($0)" }
+  let nextTrackVarName = count(from: 0) .>> { "tr\($0)" }
 
   var description: String {
     guard let nonNull = Z3_solver_to_string(ctx.ctx, solver) else { return "<NULL SOLVER?>" }

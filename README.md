@@ -6,12 +6,6 @@ Static analysis for tensor shapes in S4TF programs
 
 - Limited to a single file only
 - Only analyzes functions with a single basic block
-- The use of `assert` statements would violate the "single basic block" rule, so for now, please paste the following code into your file (can be at the very bottom), and use `check` instead:
-
-```swift
-@_silgen_name("check") @inline(never)
-func check(_ cond: Bool) { if !cond { fatalError() } }
-```
 
 ## Recognized constraints
 
@@ -26,92 +20,74 @@ x.shape[0] == (y.shape[1] - z.shape[2] + 1) / 2
 x.shape == [y.shape[0], 4]
 ```
 
-_TODO: Write down the exact grammar_
+The full grammar can be found in `Sources/LibShapeChecker/Constraint.swift`.
 
 ## How to use
 
 To analyze a file `example.swift` execute `swift run ShapeChecker example.swift`.
-Don't forget to define `check` as mentioned in the _Restrictions_ section.
 
 For example, if `example.swift` contains the following:
 ```swift
-@_silgen_name("matmul") @inline(never)
+func randn(_ shape: TensorShape) -> Tensor<Float> {
+  let result = Tensor<Float>(randomNormal: shape)
+  assert(result.shape == shape)
+  return result
+}
+
 func matmul(_ x: Tensor<Float>, _ y: Tensor<Float>) -> Tensor<Float> {
-  check(x.rank == 2)
-  check(y.rank == 2)
-  check(x.shape[1] == y.shape[0])
+  assert(x.rank == 2)
+  assert(y.rank == 2)
+  assert(x.shape[1] == y.shape[0])
   let r = TensorFlow.matmul(x, y)
-  check(r.rank == 2)
-  check(r.shape[0] == x.shape[0])
-  check(r.shape[1] == y.shape[1])
+  assert(r.rank == 2)
+  assert(r.shape[0] == x.shape[0])
+  assert(r.shape[1] == y.shape[1])
   return r
 }
 
-@_silgen_name("transpose") @inline(never)
-func transpose(_ x: Tensor<Float>) -> Tensor<Float> {
-  check(x.rank == 2)
-  let r = x.transposed()
-  check(r.rank == 2)
-  check(r.shape[0] == x.shape[1])
-  check(r.shape[1] == x.shape[0])
-  return r
+func verify() -> Tensor<Float> {
+  let x = randn([2, 3])
+  return matmul(x, x)
 }
-
-@_silgen_name("verify")
-func verify(x : Tensor<Float>) -> Tensor<Float> {
-  check(x.shape[0] == 2)
-  check(x.shape[1] == 3)
-  let a = matmul(x, x)
-  return transpose(a)
-}
-
-@_silgen_name("check") @inline(never)
-func check(_ cond: Bool) { if !cond { fatalError() } }
 ```
 
 you should see an output similar to this:
 ```
-...
-
-matmul
-[s0.rank == 2,
- s1.rank == 2,
- s0.rank > 1,
- s1.rank > 0,
- s0.shape[1] == s1.shape[0],
- $s10TensorFlow6matmul_10transposed_AcA0A0VyxGAF_SbAFSbtSjRzAA0aB6ScalarRzlFfA0_(),
- $s10TensorFlow6matmul_10transposed_AcA0A0VyxGAF_SbAFSbtSjRzAA0aB6ScalarRzlFfA2_(),
- s2 = $s10TensorFlow6matmul_10transposed_AcA0A0VyxGAF_SbAFSbtSjRzAA0aB6ScalarRzlF(s0, *, s1, *),
- s2.rank == 2,
- s2.rank > 0,
- s0.rank > 0,
- s2.shape[0] == s0.shape[0],
- s2.rank > 1,
- s1.rank > 1,
- s2.shape[1] == s1.shape[1]] => (s0, s1) -> s2
+$s4main5randny10TensorFlow0C0VySfGAC0C5ShapeVF
 ✅ Constraints are satisfiable!
 
-transpose
-[s0.rank == 2,
- s1 = $s10TensorFlow0A0V10transposedACyxGyF(s0),
- s1.rank == 2,
- s1.rank > 0,
- s0.rank > 1,
- s1.shape[0] == s0.shape[1],
- s1.rank > 1,
- s0.rank > 0,
- s1.shape[1] == s0.shape[0]] => (s0) -> s1
+$s4main5randny10TensorFlow0C0VySfGAC0C5ShapeVFSbyXEfu_
 ✅ Constraints are satisfiable!
 
-verify
-[s0.rank > 0,
- s0.shape[0] == 2,
- s0.rank > 1,
- s0.shape[1] == 3,
- s1 = matmul(s0, s0),
- s2 = transpose(s1)] => (s0) -> s2
-❌ Found a contradiction!
+$s4main6matmuly10TensorFlow0C0VySfGAF_AFtF
+✅ Constraints are satisfiable!
+
+$s4main6matmuly10TensorFlow0C0VySfGAF_AFtFSbyXEfu0_
+✅ Constraints are satisfiable!
+
+$s4main6matmuly10TensorFlow0C0VySfGAF_AFtFSbyXEfu1_
+✅ Constraints are satisfiable!
+
+$s4main6matmuly10TensorFlow0C0VySfGAF_AFtFSbyXEfu2_
+✅ Constraints are satisfiable!
+
+$s4main6matmuly10TensorFlow0C0VySfGAF_AFtFSbyXEfu3_
+✅ Constraints are satisfiable!
+
+$s4main6matmuly10TensorFlow0C0VySfGAF_AFtFSbyXEfu4_
+✅ Constraints are satisfiable!
+
+$s4main6matmuly10TensorFlow0C0VySfGAF_AFtFSbyXEfu_
+✅ Constraints are satisfiable!
+
+$s4main6verify10TensorFlow0C0VySfGyF
+❌ Derived a contradiction from:
+  - s4 = [2, 3]
+  - s4.shape[1] = s4.shape[0]
 ```
 
-What you see here is a shape signature of the matmul function.
-The first part of the output is a list of shape constraints that are necessary for its correctness, and the `(s1, s2) -> s3` part describes that the variables `s1` and `s2` correspond to the shapes of two arguments, while `s3` corresponds to the output shape.
+What you see here is that the tool has found a contradiction in the shape equations.
+Each entry corresponds to a top-level function (note that Swift generates a few of those on its own) and unfortunately for now their names are displayed as mangled Swift symbols.
+The output can be improved by piping it through `swift-demangle` (e.g. that changes `$s4main6verify10TensorFlow0C0VySfGyF` to `main.verify() -> TensorFlow.Tensor<Swift.Float>`).
+
+If you want a very detailed view you can try adding a `--signatures` flag to the invocation, but they will usually get extremely verbose and hard to read, even in examples as simple as this one.

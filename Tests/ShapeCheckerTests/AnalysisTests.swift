@@ -8,27 +8,10 @@ final class AnalysisTests: XCTestCase {
   let s1 = ListExpr.var(ListVar(1))
   let d0 = IntExpr.var(IntVar(0))
   let d1 = IntExpr.var(IntVar(1))
-
-  func testSingleFunctionAnalysis() {
-    withSIL(forSource: transposeCode) { module in
-      let analyzer = Analyzer()
-      analyzer.analyze(module: module)
-      guard let summary = analyzer.environment["transpose"] else {
-        return XCTFail("Failed to find a summary for 'transpose'")
-      }
-      XCTAssertEqual(summary.prettyDescription, """
-      [s0.rank == 2,
-       s1 = $s10TensorFlow0A0V10transposedACyxGyF(s0),
-       s1.rank == 2,
-       s1.rank > 0,
-       s0.rank > 1,
-       s1.shape[0] == s0.shape[1],
-       s1.rank > 1,
-       s0.rank > 0,
-       s1.shape[1] == s0.shape[0]] => (s0) -> s1
-      """)
-    }
-  }
+  let b0 = BoolExpr.var(BoolVar(0))
+  let b1 = BoolExpr.var(BoolVar(1))
+  let b2 = BoolExpr.var(BoolVar(2))
+  let b3 = BoolExpr.var(BoolVar(3))
 
   func alphaNormalize(_ constraints: [Constraint]) -> [Constraint] {
     var rename = DefaultDict<Var, Var>(withDefault: makeVariableGenerator())
@@ -37,22 +20,6 @@ final class AnalysisTests: XCTestCase {
 
   func normalize(_ constraints: [Constraint]) -> [Constraint] {
     return alphaNormalize(simplify(constraints))
-  }
-
-  func testInstantiateNoop() {
-    withSIL(forSource: transposeCode) { module in
-      let analyzer = Analyzer()
-      analyzer.analyze(module: module)
-      guard let summary = analyzer.environment["transpose"] else {
-        return XCTFail("Failed to recover the summary for transpose")
-      }
-      let exprConstraints = summary.constraints.filter {
-        if case .expr(_) = $0 { return true } else { return false }
-      }
-      let instance = instantiate(constraintsOf: "transpose",
-                                 inside: analyzer.environment)
-      XCTAssertEqual(normalize(exprConstraints), normalize(instance))
-    }
   }
 
   func testAnalysisThroughCalls() {
@@ -82,8 +49,8 @@ final class AnalysisTests: XCTestCase {
 
     @_silgen_name("f")
     func f(_ x: Tensor<Float>) {
-      check(x.shape[0] == 3)
-      check(pred(x.shape))
+      assert(x.shape[0] == 3)
+      assert(pred(x.shape))
     }
     """
     withSIL(forSource: code) { module in
@@ -91,7 +58,7 @@ final class AnalysisTests: XCTestCase {
       analyzer.analyze(module: module)
       let f = instantiate(constraintsOf: "f", inside: analyzer.environment)
       XCTAssertTrue(normalize(f).contains(
-        .expr(.boolEq(.var(BoolVar(1)), .intEq(.element(0, of: s0), .literal(2))))
+        .expr(.boolEq(.var(BoolVar(2)), .intEq(.element(0, of: s0), .literal(2))))
       ))
     }
   }
@@ -125,9 +92,31 @@ final class AnalysisTests: XCTestCase {
     ])
   }
 
+  func testInlineBoolVars() {
+    XCTAssertEqual(inlineBoolVars([
+      .expr(b0),
+      .expr(.boolEq(b0, .intGt(d0, .literal(2)))),
+    ]), [
+      .expr(.intGt(d0, .literal(2))),
+    ])
+    // Not perfect, but good enough for now
+    XCTAssertEqual(inlineBoolVars([
+      .expr(b1),
+      .expr(.boolEq(b1, b0)),
+      .expr(.boolEq(b0, .intGt(d0, .literal(4)))),
+    ]), [
+      .expr(b0),
+      .expr(.boolEq(b0, .intGt(d0, .literal(4)))),
+    ])
+    let hard: [Constraint] = [
+      .expr(.boolEq(b0, b1)),
+      .expr(.boolEq(b0, .intGt(d0, .literal(4)))),
+      .expr(b1),
+    ]
+    XCTAssertEqual(inlineBoolVars(hard), hard)
+  }
+
   static var allTests = [
-    ("testSingleFunctionAnalysis", testSingleFunctionAnalysis),
-    ("testInstantiateNoop", testInstantiateNoop),
     ("testAnalysisThroughCalls", testAnalysisThroughCalls),
     ("testCustomPredicate", testCustomPredicate),
   ]

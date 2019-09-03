@@ -53,12 +53,46 @@ func simplify(_ constraints: [Constraint]) -> [Constraint] {
         return .expr(expr)
       }
     case .call(_, _, _):
-      return nil
+      return constraint
     }
   }
 
   return subset.map {
     substitute($0, using: { representative(equalityClasses[$0]).expr })
+  }
+}
+
+// Assertion instantiations produce patterns of the form:
+// b4 = <cond>, b4
+// This function tries to find those and inline them.
+func inlineBoolVars(_ constraints: [Constraint]) -> [Constraint] {
+  var usedBoolVars = Set<BoolVar>()
+  func gatherBoolVars(_ constraint: Constraint) {
+    let _ = substitute(constraint) {
+      if case let .bool(v) = $0 { usedBoolVars.insert(v) }
+      return nil
+    }
+  }
+
+  var exprs: [BoolVar: BoolExpr] = [:]
+  for constraint in constraints {
+    if case let .expr(.boolEq(.var(v), expr)) = constraint, exprs[v] == nil {
+      exprs[v] = expr
+      gatherBoolVars(.expr(expr))
+    } else if case .expr(.var(_)) = constraint {
+      // Do nothing
+    } else {
+      gatherBoolVars(constraint)
+    }
+  }
+
+  return constraints.compactMap { constraint in
+    if case let .expr(.boolEq(.var(v), _)) = constraint, !usedBoolVars.contains(v) {
+      return nil
+    } else if case let .expr(.var(v)) = constraint, !usedBoolVars.contains(v) {
+      return exprs[v].map{ .expr($0) } ?? constraint
+    }
+    return constraint
   }
 }
 

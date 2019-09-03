@@ -256,7 +256,7 @@ extension BoolExpr: CustomStringConvertible {
     case let .and(subexprs):
       return subexprs.map{ "(\($0.description))" }.joined(separator: " and ")
     case let .intEq(lhs, rhs):
-      return "\(lhs) == \(rhs)"
+      return "\(lhs) = \(rhs)"
     case let .intGt(lhs, rhs):
       return "\(lhs) > \(rhs)"
     case let .intGe(lhs, rhs):
@@ -266,9 +266,9 @@ extension BoolExpr: CustomStringConvertible {
     case let .intLe(lhs, rhs):
       return "\(lhs) <= \(rhs)"
     case let .listEq(lhs, rhs):
-      return "\(lhs) == \(rhs)"
+      return "\(lhs) = \(rhs)"
     case let .boolEq(lhs, rhs):
-      return "\(lhs) == \(rhs)"
+      return "\(lhs) = \(rhs)"
     }
   }
 }

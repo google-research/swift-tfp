@@ -4,55 +4,11 @@ import XCTest
 
 @available(macOS 10.13, *)
 final class FrontendTests: XCTestCase {
-
-  func testFrontendConstraints() {
-    withSIL(forSource: transposeCode) { module in
-      guard let block = getOnlyBlock(fromFunctionCalled: "transpose", module) else { return }
-      guard let summary = abstract(block) else {
-          return XCTFail("Failed to abstract a block")
-      }
-      let constraints = summary.constraints
-      guard constraints.count == 9 else {
-        return XCTFail("Expected to find exactly 5 constraints")
-      }
-      guard case .expr(.intEq(.length(of: _), .literal(2))) = constraints[0] else {
-        return XCTFail("First constraint looks incorrect: \(constraints[0])")
-      }
-      guard case let .call(methodName, _, _) = constraints[1] else {
-        return XCTFail("Second constraint should be an apply constraint: \(constraints[1])")
-      }
-      guard methodName.contains("transposed") else {
-        return XCTFail("Called method should contain 'transposed' within its name")
-      }
-      guard case .expr(.intEq(.length(of: _), .literal(2))) = constraints[2] else {
-        return XCTFail("Third constraint looks incorrect: \(constraints[2])")
-      }
-      guard case .expr(.intGt(.length(of: _), .literal(0))) = constraints[3] else {
-        return XCTFail("Fourth constraint looks incorrect: \(constraints[3])")
-      }
-      guard case .expr(.intGt(.length(of: _), .literal(1))) = constraints[4] else {
-        return XCTFail("Fifth constraint looks incorrect: \(constraints[4])")
-      }
-      guard case .expr(.intEq(.element(0, of: _), .element(1, of: _))) = constraints[5] else {
-        return XCTFail("Sixth constraint looks incorrect: \(constraints[5])")
-      }
-      guard case .expr(.intGt(.length(of: _), .literal(1))) = constraints[6] else {
-        return XCTFail("Seventh constraint looks incorrect: \(constraints[6])")
-      }
-      guard case .expr(.intGt(.length(of: _), .literal(0))) = constraints[7] else {
-        return XCTFail("Eighth constraint looks incorrect: \(constraints[7])")
-      }
-      guard case .expr(.intEq(.element(1, of: _), .element(0, of: _))) = constraints[8] else {
-        return XCTFail("Ninth constraint looks incorrect: \(constraints[8])")
-      }
-    }
-  }
-
   func testAssertRecovery() {
     func makeCheck(_ cond: String) -> String {
       return """
         @_silgen_name("f") func f(x: Tensor<Float>, y: Tensor<Float>, i: Int) {
-          check(\(cond))
+          assert(\(cond))
         }
       """
     }
@@ -103,25 +59,22 @@ final class FrontendTests: XCTestCase {
     ]
     for (cond, expectedExprs) in asserts {
       withSIL(forSource: makeCheck(cond)) { module in
-        guard let block = getOnlyBlock(fromFunctionCalled: "f", module) else {
-          return XCTFail("Couldn't retrieve the block")
+        var remaining = expectedExprs
+        for function in module.functions {
+          if function.blocks.count != 1 { continue }
+          let block = function.blocks[0]
+          let instrDefs = normalizeArrayLiterals(block.instructionDefs)
+          guard let summary = abstract(Block(block.identifier, block.arguments, instrDefs)) else { continue }
+          remaining = remaining.filter { summary.constraints.contains(.expr($0)) }
         }
-        let instrDefs = normalizeArrayLiterals(block.instructionDefs)
-        guard let summary = abstract(Block(block.identifier, block.arguments, instrDefs)) else {
-          return XCTFail("Failed to recover the summary for: \(cond)")
+        if !remaining.isEmpty {
+          XCTFail("Failed to find the following constraints: \(remaining)")
         }
-        let exprs = summary.constraints.compactMap { (_ c: Constraint) -> BoolExpr? in
-          switch c {
-          case let .expr(expr): return expr
-          case .call(_, _, _): return nil
-          }
-        }
-        XCTAssertEqual(exprs, expectedExprs)
       }
     }
   }
 
   static var allTests = [
-    ("testFrontendConstraints", testFrontendConstraints),
+    ("testAssertRecovery", testAssertRecovery),
   ]
 }

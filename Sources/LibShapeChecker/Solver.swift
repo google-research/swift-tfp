@@ -4,12 +4,14 @@ enum SolverResult {
   case unsat([BoolExpr]?)
 }
 
+let optimize = simplify >>> inlineBoolVars >>> simplify
+
 func verify(_ constraints: [Constraint]) -> SolverResult {
   let solver = Z3Context.default.makeSolver()
   var shapeVars = Set<ListVar>()
   var trackers: [String: BoolExpr] = [:]
 
-  for constraint in simplify(constraints) {
+  for constraint in optimize(constraints) {
     switch constraint {
     case let .expr(expr):
       trackers[solver.assertAndTrack(expr.solverAST)] = expr
@@ -45,7 +47,7 @@ func verify(_ constraints: [Constraint]) -> SolverResult {
 ////////////////////////////////////////////////////////////////////////////////
 // Z3 translation
 
-fileprivate var nextIntVariable = count(from: 0) >>> String.init >>> Z3Context.default.make(intVariable:)
+fileprivate var nextIntVariable = count(from: 0) .>> String.init .>> Z3Context.default.make(intVariable:)
 
 extension ListVar {
   var solverAST: Z3Expr<[Int]> { Z3Context.default.make(listVariable: description) }

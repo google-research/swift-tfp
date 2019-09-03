@@ -1,4 +1,3 @@
-* Support for regular assertions
 * Broadcasting
 * Negative dimension indices
 * Emit warnings from the frontend

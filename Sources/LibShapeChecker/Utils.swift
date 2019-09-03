@@ -2,19 +2,20 @@
 // NB: To the best of my knowledge it's impossible make it fully polymorphic
 //     (e.g. in the number of arguments), so if you need more cases feel free
 //     to add them below!
+infix operator .>>: FunctionComposition
 infix operator >>>: FunctionComposition
 
 precedencegroup FunctionComposition {
   associativity: left
 }
 
-/*@inlinable*/
-/*func >>><A, B, C>(_ f: @escaping (A) -> B, _ h: @escaping (B) -> C) -> (A) -> C {*/
-  /*return { h(f($0)) }*/
-/*}*/
+@inlinable
+func >>><A, B, C>(_ f: @escaping (A) -> B, _ h: @escaping (B) -> C) -> (A) -> C {
+  return { h(f($0)) }
+}
 
 @inlinable
-func >>><B, C>(_ f: @escaping () -> B, _ h: @escaping (B) -> C) -> () -> C {
+func .>><B, C>(_ f: @escaping () -> B, _ h: @escaping (B) -> C) -> () -> C {
   return { h(f()) }
 }
 

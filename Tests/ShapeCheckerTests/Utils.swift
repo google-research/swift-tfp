@@ -6,11 +6,11 @@ let transposeCode = """
 
 @_silgen_name("transpose") @inline(never)
 func transpose(_ x: Tensor<Float>) -> Tensor<Float> {
-  check(x.rank == 2)
+  assert(x.rank == 2)
   let r = x.transposed()
-  check(r.rank == 2)
-  check(r.shape[0] == x.shape[1])
-  check(r.shape[1] == x.shape[0])
+  assert(r.rank == 2)
+  assert(r.shape[0] == x.shape[1])
+  assert(r.shape[1] == x.shape[0])
   return r
 }
 
@@ -20,13 +20,13 @@ let matmulCode = """
 
 @_silgen_name("matmul") @inline(never)
 func matmul(_ x: Tensor<Float>, _ y: Tensor<Float>) -> Tensor<Float> {
-  check(x.rank == 2)
-  check(y.rank == 2)
-  check(x.shape[1] == y.shape[0])
+  assert(x.rank == 2)
+  assert(y.rank == 2)
+  assert(x.shape[1] == y.shape[0])
   let r = TensorFlow.matmul(x, y)
-  check(r.rank == 2)
-  check(r.shape[0] == x.shape[0])
-  check(r.shape[1] == y.shape[1])
+  assert(r.rank == 2)
+  assert(r.shape[0] == x.shape[0])
+  assert(r.shape[1] == y.shape[1])
   return r
 }
 
@@ -36,7 +36,7 @@ let randnCode = """
 
 func randn(_ shape: TensorShape) -> Tensor<Float> {
   let result = Tensor<Float>(randomNormal: shape)
-  check(result.shape == shape)
+  assert(result.shape == shape)
   return result
 }
 

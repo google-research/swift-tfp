@@ -3,7 +3,7 @@ import SIL
 typealias Register = String
 
 enum BuiltinFunction {
-  case check
+  case assert
 
   case intLiteralConstructor
   case intEqual
@@ -46,8 +46,8 @@ fileprivate class Interpreter {
     case bool(BoolExpr)
     case tensor(withShape: ListVar)
 
-    case builtinFunction(_ kind: BuiltinFunction)
     case function(_ name: String)
+    case partialApplication(_ fnReg: Register, _ args: [Register], _ argTypes: [Type])
 
     var expr: Expr? {
       switch self {
@@ -77,7 +77,7 @@ fileprivate class Interpreter {
   func freshVar(_ type: Type) -> AbstractValue? {
     switch removeOwnership(type) {
     case .namedType("Int"): return .int(.var(IntVar(freshName())))
-    case .namedType("Bool"): return .bool(.var(BoolVar(freshName())))
+    case .namedType("Bool"): return .bool(.var(freshBoolVar()))
     case .namedType("TensorShape"): return .list(.var(ListVar(freshName())))
     case let t where isTensorType(t): return freshTensorValue()
     default: return nil
@@ -86,6 +86,10 @@ fileprivate class Interpreter {
 
   func freshTensorValue() -> AbstractValue {
     return .tensor(withShape: ListVar(freshName()))
+  }
+
+  func freshBoolVar() -> BoolVar {
+    return BoolVar(freshName())
   }
 
   init(_ block: Block) {
@@ -133,53 +137,52 @@ fileprivate class Interpreter {
         valuation[arrayReg] = .list(.literal(elementExprs))
 
       case let .functionRef(name, _):
-        if let builtin = getBuiltinFunctionRef(called: name) {
-          updates = [.builtinFunction(builtin)]
-        } else {
-          updates = [.function(name)]
+        updates = [.function(name)]
+
+      case let .partialApply(_, _, fn, _, args, fnType):
+        guard case let .functionType(allArgTypes, _) = unwrapFunctionType(fnType) else {
+          fatalError("Expected a function type in .partialApply, got: \(fnType)")
         }
+        assert(allArgTypes.count >= args.count)
+        updates = [.partialApplication(fn, args, allArgTypes.suffix(args.count))]
+
+      case let .convertEscapeToNoescape(_, _, operand, _):
+        updates = [valuation[operand.value]]
 
       // NB: Shape accessors are implemented as coroutines.
-      case let .beginApply(_, fn, _, args, fnType):
+      case let .beginApply(_, appliedFnReg, _, appliedArgs, appliedFnType):
           // Eyeballing the generated code indicates that in the cases we care about
           // begin_apply should be followed immediately by an end_apply.
           guard case .endApply(_) = instructions.next()?.instruction else {
             break
           }
           fallthrough
-      case let .apply(_, fn, _, args, fnType):
-        switch valuation[fn] {
-        case let .function(name):
-          guard let results = instrDef.result?.valueNames else {
-            fatalError("Apply instruction with no results")
-          }
-          guard results.count == 1 else {
-            fatalError("Apply instruction with multiple results")
-          }
-          let result = results[0]
-
-          guard case let .functionType(argTypes, resultType) = unwrapFunctionType(fnType) else {
-            fatalError("Expected a function type, got: \(fnType)")
-          }
-          constraints.append(.call(name,
-                                   zip(argTypes, args).map{ valuation[$0.1, setDefault: freshVar($0.0)]?.expr },
-                                   valuation[result, setDefault: freshVar(resultType)]?.expr))
-        case let .builtinFunction(kind):
-          updates = interpret(builtinFunction: kind, args: args)
-        case nil:
+      case let .apply(_, appliedFnReg, _, appliedArgs, appliedFnType):
+        guard case let .functionType(appliedArgTypes, resultType) = unwrapFunctionType(appliedFnType) else {
+          fatalError("Expected a function type in .apply, got: \(appliedFnType)")
+        }
+        guard let (name: name, args: bundleArgs, argTypes: bundleArgTypes) = resolveFunction(appliedFnReg) else {
           break
-        default:
-          fatalError("Calling a non-function value")
+        }
+        let args = appliedArgs + bundleArgs
+        let argTypes = appliedArgTypes + bundleArgTypes
+
+        if let kind = getBuiltinFunctionRef(called: name) {
+          updates = interpret(builtinFunction: kind, args: args)
+          break
+        }
+        guard let results = instrDef.result?.valueNames,
+              results.count == 1 else {
+          fatalError("Apply instruction with no results")
         }
 
-      case let .struct(type, operands):
-        guard case let .namedType(typeName) = type,
-              ["Bool", "Int"].contains(typeName) else { continue }
-        updates = operands.map { valuation[$0.value] }
+        constraints.append(.call(name,
+                                  zip(argTypes, args).map{ valuation[$0.1, setDefault: freshVar($0.0)]?.expr },
+                                  valuation[results[0], setDefault: freshVar(resultType)]?.expr))
 
       case let .structExtract(operand, decl):
         switch decl.name {
-        case ["Int", "_value"]:
+        case ["Bool", "_value"]:
           updates = [valuation[operand.value]]
         default:
           break
@@ -293,18 +296,38 @@ fileprivate class Interpreter {
       }
       return [.bool(.listEq(a, b))]
 
-    case .check:
-      guard args.count == 1 else {
-        fatalError("Check expects a single argument")
+    case .assert:
+      guard args.count == 4 else {
+        fatalError("Assert expects four arguments")
       }
-      if case let .bool(cond) = valuation[args[0]] {
-        constraints.append(.expr(cond))
-      } else {
+      guard let (name: name, args: args, argTypes: argTypes) = resolveFunction(args[0]) else {
         // TODO: Turn into a proper log/warning
-        print("Failed to recover a check!")
+        print("Failed to recover an assert!")
+        return nil
       }
+      let condVar = freshBoolVar()
+      constraints.append(.call(name,
+                               zip(argTypes, args).map{ valuation[$0.1, setDefault: freshVar($0.0)]?.expr },
+                               .bool(.var(condVar))))
+      constraints.append(.expr(.var(condVar)))
       return nil
     }
+  }
+
+  func resolveFunction(_ baseFnReg: Register) -> (name: String, args: [Register], argTypes: [Type])? {
+    guard valuation[baseFnReg] != nil else { return nil }
+    var fnReg = baseFnReg
+    var args: [Register] = []
+    var argTypes: [Type] = []
+    while case let .partialApplication(appliedFnReg, appliedArgs, appliedArgTypes) = valuation[fnReg] {
+      fnReg = appliedFnReg
+      args += appliedArgs
+      argTypes += appliedArgTypes
+    }
+    guard case let .function(fnName) = valuation[fnReg] else {
+      fatalError("Expected a function value!")
+    }
+    return (fnName, args, argTypes)
   }
 }
 
@@ -330,9 +353,9 @@ fileprivate func getBuiltinFunctionRef(called name: String) -> BuiltinFunction? 
       return .intDivide
     case "$sSi22_builtinIntegerLiteralSiBI_tcfC":
       return .intLiteralConstructor
-    case "check":
-      return .check
-  case "$s10TensorFlow0A5ShapeV12arrayLiteralACSid_tcfC":
+    case "$ss6assert__4file4lineySbyXK_SSyXKs12StaticStringVSutF":
+      return .assert
+    case "$s10TensorFlow0A5ShapeV12arrayLiteralACSid_tcfC":
       return .shapeConstructor
     case "$s10TensorFlow0A0V5shapeAA0A5ShapeVvg":
       return .shapeGetter
