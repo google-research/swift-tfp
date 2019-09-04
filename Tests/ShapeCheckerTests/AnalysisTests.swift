@@ -8,6 +8,7 @@ final class AnalysisTests: XCTestCase {
   let s1 = ListExpr.var(ListVar(1))
   let d0 = IntExpr.var(IntVar(0))
   let d1 = IntExpr.var(IntVar(1))
+  let d2 = IntExpr.var(IntVar(2))
   let b0 = BoolExpr.var(BoolVar(0))
   let b1 = BoolExpr.var(BoolVar(1))
   let b2 = BoolExpr.var(BoolVar(2))
@@ -18,9 +19,7 @@ final class AnalysisTests: XCTestCase {
     return constraints.map{ substitute($0, using: { rename[$0].expr }) }
   }
 
-  func normalize(_ constraints: [Constraint]) -> [Constraint] {
-    return alphaNormalize(simplify(constraints))
-  }
+  lazy var normalize = simplify >>> inlineBoolVars >>> simplify >>> self.alphaNormalize
 
   func testAnalysisThroughCalls() {
     let callTransposeCode = """
@@ -58,7 +57,7 @@ final class AnalysisTests: XCTestCase {
       analyzer.analyze(module: module)
       let f = instantiate(constraintsOf: "f", inside: analyzer.environment)
       XCTAssertTrue(normalize(f).contains(
-        .expr(.boolEq(.var(BoolVar(2)), .intEq(.element(0, of: s0), .literal(2))))
+        .expr(.intEq(.element(0, of: s0), .literal(2)))
       ))
     }
   }
@@ -77,6 +76,32 @@ final class AnalysisTests: XCTestCase {
       XCTAssertTrue(normalize(f).contains(
         .expr(.listEq(s0, .literal([.literal(2), .literal(3)])))
       ))
+    }
+  }
+
+  func testTuples() {
+    let code = """
+    func swizzle(_ x: (Int, Int)) -> (Int, Int) {
+     return (x.1, x.0)
+    }
+
+    @_silgen_name("f")
+    func f(_ x: Tensor<Float>) {
+      let a = x.shape[0]
+      let b = x.shape[1]
+      let (b2, a2) = swizzle((a, b))
+      assert(a == b2)
+      assert(a2 == b)
+    }
+    """
+    withSIL(forSource: randnCode + code) { module in
+      let analyzer = Analyzer()
+      analyzer.analyze(module: module)
+      let f = normalize(instantiate(constraintsOf: "f", inside: analyzer.environment))
+      XCTAssertTrue(f.contains(.expr(.intEq(d1, .element(0, of: s0)))))
+      XCTAssertTrue(f.contains(.expr(.intEq(d1, .element(1, of: s0)))))
+      XCTAssertTrue(f.contains(.expr(.intEq(d2, .element(0, of: s0)))))
+      XCTAssertTrue(f.contains(.expr(.intEq(d2, .element(1, of: s0)))))
     }
   }
 

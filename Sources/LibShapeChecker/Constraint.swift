@@ -61,16 +61,29 @@ public indirect enum BoolExpr: Equatable {
   case intLe(IntExpr, IntExpr)
   case listEq(ListExpr, ListExpr)
   case boolEq(BoolExpr, BoolExpr)
+  // NB: No compound cases for the sake of type safety and
+  //     because all compound expressions should get desugared
+  //     during call resolution.
+}
+
+public enum CompoundExpr: Equatable {
+  case tuple([Expr?])
 }
 
 public enum Expr: Equatable {
   case int(IntExpr)
   case list(ListExpr)
   case bool(BoolExpr)
+  case compound(CompoundExpr)
 }
 
 public enum Constraint: Equatable {
   case expr(BoolExpr)
+  // Calls could theoretically be expressed by something like
+  // .resultTypeEq(result, .resultTypeCall(name, args))
+  // However, there are valid Exprs (e.g. involving compound types)
+  // which are not expressible by BoolExprs and this is a way of
+  // ensuring that we desugar those before validation happens.
   case call(_ name: String, _ args: [Expr?], _ result: Expr?)
 
   var expr: BoolExpr? {
@@ -174,6 +187,13 @@ public func substitute(_ e: BoolExpr, using s: Substitution) -> BoolExpr {
   }
 }
 
+public func substitute(_ e: CompoundExpr, using s: Substitution) -> CompoundExpr {
+  switch e {
+  case let .tuple(subexprs):
+    return .tuple(subexprs.map{ $0.map{ substitute($0, using: s) } })
+  }
+}
+
 public func substitute(_ c: Constraint, using s: Substitution) -> Constraint {
   switch c {
   case let .expr(expr):
@@ -188,6 +208,7 @@ public func substitute(_ e: Expr, using s: Substitution) -> Expr {
   case let .int(expr): return .int(substitute(expr, using: s))
   case let .list(expr): return .list(substitute(expr, using: s))
   case let .bool(expr): return .bool(substitute(expr, using: s))
+  case let .compound(expr): return .compound(substitute(expr, using: s))
   }
 }
 
@@ -224,9 +245,9 @@ extension IntExpr: CustomStringConvertible {
     case let .literal(v):
       return String(v)
     case let .length(of: expr):
-      return "\(expr).rank"
+      return "rank(\(expr))"
     case let .element(offset, of: expr):
-      return "\(expr).shape[\(offset)]"
+      return "\(expr)[\(offset)]"
     case let .add(lhs, rhs):
       return "(\(lhs) + \(rhs))"
     case let .sub(lhs, rhs):
@@ -278,6 +299,15 @@ extension BoolExpr: CustomStringConvertible {
   }
 }
 
+extension CompoundExpr: CustomStringConvertible {
+  public var description: String {
+    switch self {
+    case let .tuple(subexprs):
+      return "(" + subexprs.map{ $0?.description ?? "*" }.joined(separator: ", ") + ")"
+    }
+  }
+}
+
 extension Constraint: CustomStringConvertible {
   public var description: String {
     switch self {
@@ -300,6 +330,7 @@ extension Expr: CustomStringConvertible {
     case let .int(expr): return expr.description
     case let .list(expr): return expr.description
     case let .bool(expr): return expr.description
+    case let .compound(expr): return expr.description
     }
   }
 }

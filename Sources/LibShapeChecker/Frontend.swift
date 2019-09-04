@@ -35,7 +35,7 @@ func abstract(_ block: Block) -> FunctionSummary? {
   default:
     return nil
   }
-  return FunctionSummary(argVars: block.arguments.map { interpreter.valuation[$0.valueName]?.variable },
+  return FunctionSummary(argExprs: block.arguments.map { interpreter.valuation[$0.valueName]?.expr },
                          retExpr: interpreter.valuation[result]?.expr,
                          constraints: interpreter.constraints)
 }
@@ -48,6 +48,7 @@ fileprivate class Interpreter {
     case bool(BoolExpr)
     case tensor(withShape: ListVar)
 
+    case tuple([AbstractValue?])
     case function(_ name: String)
     case partialApplication(_ fnReg: Register, _ args: [Register], _ argTypes: [Type])
 
@@ -56,17 +57,8 @@ fileprivate class Interpreter {
       case let .int(expr): return .int(expr)
       case let .list(expr): return .list(expr)
       case let .bool(expr): return .bool(expr)
+      case let .tuple(subexprs): return .compound(.tuple(subexprs.map{ $0?.expr }))
       case let .tensor(withShape: v): return .list(.var(v))
-      default: return nil
-      }
-    }
-
-    var variable: Var? {
-      switch self {
-      case let .int(.var(v)): return .int(v)
-      case let .list(.var(v)): return .list(v)
-      case let .bool(.var(v)): return .bool(v)
-      case let .tensor(withShape: v): return .list(v)
       default: return nil
       }
     }
@@ -81,6 +73,7 @@ fileprivate class Interpreter {
     case .namedType("Int"): return .int(.var(IntVar(freshName())))
     case .namedType("Bool"): return .bool(.var(freshBoolVar()))
     case .namedType("TensorShape"): return freshShapeValue()
+    case let .tupleType(types): return .tuple(types.map(freshVar))
     case let t where isTensorType(t): return freshTensorValue()
     default: return nil
     }
@@ -193,6 +186,16 @@ fileprivate class Interpreter {
         default:
           break
         }
+
+      case let .tuple(elements):
+        switch elements {
+        case let .labeled(_, registers): updates = [.tuple(registers.map{ valuation[$0] })]
+        case let .unlabeled(operands): updates = [.tuple(operands.map{ valuation[$0.value] })]
+        }
+
+      case let .destructureTuple(operand):
+        guard case let .tuple(values) = valuation[operand.value] else { break }
+        updates = values
 
       default:
         break
