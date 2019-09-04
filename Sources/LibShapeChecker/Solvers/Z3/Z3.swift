@@ -4,6 +4,7 @@ class Z3Context {
   var ctx: Z3_context
   let intSort: Z3_sort
   let boolSort: Z3_sort
+  lazy var `true`: Z3Expr<Bool> = Z3Expr(self, Z3_mk_true(ctx))
 
   init() {
     var config: Z3_config = Z3_mk_config()
@@ -38,7 +39,6 @@ class Z3Context {
   func literal(_ value: Int) -> Z3Expr<Int> {
     return Z3Expr(self, Z3_mk_int64(ctx, Int64(value), intSort))
   }
-
 
   static let `default` = Z3Context()
 }
@@ -201,9 +201,16 @@ prefix func !(_ a: Z3Expr<Bool>) -> Z3Expr<Bool> {
   return Z3Expr(a.ctx, Z3_mk_not(a.ctx.ctx, a.ast))
 }
 
-func z3and(_ exprs: [Z3Expr<Bool>]) -> Z3Expr<Bool> {
-  guard let anyExpr = exprs.first else { fatalError("Empty and expression") }
-  return Z3Expr(anyExpr.ctx, Z3_mk_and(anyExpr.ctx.ctx, UInt32(exprs.count), exprs.map{ $0.ast }))
+func &&(_ a: Z3Expr<Bool>, _ b: Z3Expr<Bool>) -> Z3Expr<Bool> {
+  return Z3Expr(a.ctx, Z3_mk_and(a.ctx.ctx, 2, [a.ast, b.ast]))
+}
+
+func ||(_ a: Z3Expr<Bool>, _ b: Z3Expr<Bool>) -> Z3Expr<Bool> {
+  return Z3Expr(a.ctx, Z3_mk_or(a.ctx.ctx, 2, [a.ast, b.ast]))
+}
+
+func ite<T>(_ cond: Z3Expr<Bool>, _ t: Z3Expr<T>, _ f: Z3Expr<T>) -> Z3Expr<T> {
+  return Z3Expr(cond.ctx, Z3_mk_ite(cond.ctx.ctx, cond.ast, t.ast, f.ast))
 }
 
 extension Z3Expr where T == [Int] {
@@ -222,6 +229,6 @@ func forall(_ f: (Z3Expr<Int>) -> Z3Expr<Bool>) -> Z3Expr<Bool> {
                              /*weight=*/0,
                              /*num_patterns=*/0, /*patterns=*/nil,
                              /*num_decls=*/1, /*sorts=*/[intSort],
-                             /*decl_names=*/[Z3_mk_string_symbol(ctx, "__int")],
+                             /*decl_names=*/[Z3_mk_string_symbol(ctx, "dim")],
                              /*body=*/f(arg).ast))
 }

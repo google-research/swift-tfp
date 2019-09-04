@@ -5,6 +5,8 @@ typealias Register = String
 enum BuiltinFunction {
   case assert
 
+  case broadcast
+
   case intLiteralConstructor
   case intEqual
   case intGreater
@@ -78,7 +80,7 @@ fileprivate class Interpreter {
     switch removeOwnership(type) {
     case .namedType("Int"): return .int(.var(IntVar(freshName())))
     case .namedType("Bool"): return .bool(.var(freshBoolVar()))
-    case .namedType("TensorShape"): return .list(.var(ListVar(freshName())))
+    case .namedType("TensorShape"): return freshShapeValue()
     case let t where isTensorType(t): return freshTensorValue()
     default: return nil
     }
@@ -86,6 +88,10 @@ fileprivate class Interpreter {
 
   func freshTensorValue() -> AbstractValue {
     return .tensor(withShape: ListVar(freshName()))
+  }
+
+  func freshShapeValue() -> AbstractValue {
+    return .list(.var(ListVar(freshName())))
   }
 
   func freshBoolVar() -> BoolVar {
@@ -311,6 +317,12 @@ fileprivate class Interpreter {
                                .bool(.var(condVar))))
       constraints.append(.expr(.var(condVar)))
       return nil
+
+    case .broadcast:
+      guard args.count == 2 else { return nil }
+      guard case let .list(lhs) = valuation[args[0]],
+            case let .list(rhs) = valuation[args[1]] else { return nil }
+      return [.list(.broadcast(lhs, rhs))]
     }
   }
 
@@ -365,6 +377,8 @@ fileprivate func getBuiltinFunctionRef(called name: String) -> BuiltinFunction? 
       return .rankGetter
     case "$s10TensorFlow0A5ShapeV2eeoiySbAC_ACtFZ":
       return .shapeEqual
+    case "broadcast":
+      return .broadcast
     default:
       return nil
   }

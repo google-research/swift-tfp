@@ -48,6 +48,7 @@ public indirect enum IntExpr: Equatable {
 public indirect enum ListExpr: Equatable {
   case `var`(ListVar)
   case literal([IntExpr?])
+  case broadcast(ListExpr, ListExpr)
 }
 
 public indirect enum BoolExpr: Equatable {
@@ -145,6 +146,8 @@ public func substitute(_ e: ListExpr, using s: Substitution) -> ListExpr {
     return substitute(v, using: s)
   case let .literal(subexprs):
     return .literal(subexprs.map{ $0.map { substitute($0, using: s) } })
+  case let .broadcast(lhs, rhs):
+    return .broadcast(substitute(lhs, using: s), substitute(rhs, using: s))
   }
 }
 
@@ -244,6 +247,8 @@ extension ListExpr: CustomStringConvertible {
     case let .literal(subexprs):
       let subexprDesc = subexprs.map{ $0?.description ?? "*" }.joined(separator: ", ")
       return "[\(subexprDesc)]"
+    case let .broadcast(lhs, rhs):
+      return "broadcast(\(lhs), \(rhs))"
     }
   }
 }

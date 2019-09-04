@@ -18,9 +18,13 @@ x.shape[0] == y.shape[1]
 x.shape[0] == 5
 x.shape[0] == (y.shape[1] - z.shape[2] + 1) / 2
 x.shape == [y.shape[0], 4]
+x.shape == broadcast(y.shape, z.shape) *
 ```
 
 The full grammar can be found in `Sources/LibShapeChecker/Constraint.swift`.
+
+_* The use of broadcasting requires one to define a custom `broadcast` function_
+**TODO: Show how to do this**
 
 ## How to use
 

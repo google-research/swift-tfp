@@ -24,7 +24,12 @@ final class Z3Tests: XCTestCase {
       (.intLe(.literal(1), .literal(2)), "(<= 1 2)"),
     ]
     for (expr, expectedDescription) in examples {
-      XCTAssertEqual(expr.solverAST.description, expectedDescription)
+      let assertions = denote(expr)
+      guard assertions.count == 1 else {
+        XCTFail("Expected a single assertion!")
+        continue
+      }
+      XCTAssertEqual(assertions[0].description, expectedDescription)
     }
   }
 
@@ -67,10 +72,49 @@ final class Z3Tests: XCTestCase {
     ]))
   }
 
+  func testBroadcast() {
+    assertUnsat(verify([
+      .expr(.listEq(s2, .broadcast(s0, s1))),
+      .expr(.intEq(.element(0, of: s0), .literal(2))),
+      .expr(.intEq(.element(0, of: s1), .literal(3))),
+    ]))
+    assertSat(verify([
+      .expr(.listEq(s2, .broadcast(s0, s1))),
+      .expr(.intEq(.element(0, of: s0), .literal(1))),
+      .expr(.intEq(.element(0, of: s1), .literal(3))),
+    ]))
+    assertUnsat(verify([
+      .expr(.listEq(s2, .broadcast(s0, s1))),
+      .expr(.intEq(.element(0, of: s1), .literal(3))),
+      .expr(.intEq(.element(0, of: s2), .literal(4))),
+    ]))
+    assertUnsat(verify([
+      .expr(.listEq(s1, .broadcast(s0, .literal([.literal(2), nil, .literal(1)])))),
+      .expr(.intEq(.element(0, of: s0), .literal(3))),
+    ]))
+    assertUnsat(verify([
+      .expr(.listEq(s1, .broadcast(s0, .literal([.literal(2), nil, .literal(1)])))),
+      .expr(.intEq(.element(0, of: s1), .literal(3))),
+    ]))
+    assertSat(verify([
+      .expr(.listEq(s1, .broadcast(s0, .literal([.literal(2), nil, .literal(1)])))),
+      .expr(.intEq(.element(1, of: s0), .literal(3))),
+    ]))
+  }
+
+  func testBroadcastRank() {
+    assertUnsat(verify([
+      .expr(.listEq(s2, .broadcast(.literal([.literal(2), .literal(3)]), .literal([nil])))),
+      .expr(.intEq(.length(of: s2), .literal(3)))
+    ]))
+  }
+
   static var allTests = [
     ("testExprTranslation", testExprTranslation),
     ("testNonNegativeShapes", testNonNegativeShapes),
     ("testLists", testLists),
+    ("testBroadcast", testBroadcast),
+    ("testBroadcastRank", testBroadcastRank),
   ]
 }
 
