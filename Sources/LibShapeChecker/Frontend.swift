@@ -69,7 +69,7 @@ fileprivate class Interpreter {
   let freshName = count(from: 0)
 
   func freshVar(_ type: Type) -> AbstractValue? {
-    switch removeOwnership(type) {
+    switch simplifyType(type) {
     case .namedType("Int"): return .int(.var(IntVar(freshName())))
     case .namedType("Bool"): return .bool(.var(freshBoolVar()))
     case .namedType("TensorShape"): return freshShapeValue()
@@ -139,7 +139,7 @@ fileprivate class Interpreter {
         updates = [.function(name)]
 
       case let .partialApply(_, _, fn, _, args, fnType):
-        guard case let .functionType(allArgTypes, _) = unwrapFunctionType(fnType) else {
+        guard case let .functionType(allArgTypes, _) = simplifyType(fnType) else {
           fatalError("Expected a function type in .partialApply, got: \(fnType)")
         }
         assert(allArgTypes.count >= args.count)
@@ -157,7 +157,7 @@ fileprivate class Interpreter {
           }
           fallthrough
       case let .apply(_, appliedFnReg, _, appliedArgs, appliedFnType):
-        guard case let .functionType(appliedArgTypes, resultType) = unwrapFunctionType(appliedFnType) else {
+        guard case let .functionType(appliedArgTypes, resultType) = simplifyType(appliedFnType) else {
           fatalError("Expected a function type in .apply, got: \(appliedFnType)")
         }
         guard let (name: name, args: bundleArgs, argTypes: bundleArgTypes) = resolveFunction(appliedFnReg) else {
@@ -395,22 +395,11 @@ fileprivate func isTensorType(_ type: Type) -> Bool {
   }
 }
 
-fileprivate func unwrapFunctionType(_ type: Type) -> Type? {
+fileprivate func simplifyType(_ type: Type) -> Type {
   switch type {
-  case let .attributedType(_, t):
-    return unwrapFunctionType(t)
-  case let .genericType(_, _, t):
-    return unwrapFunctionType(t)
-  case .functionType(_, _):
-    return type
-  default:
-    return nil
-  }
-}
-
-func removeOwnership(_ type: Type) -> Type {
-  switch type {
-  case let .withOwnership(_, subtype): return removeOwnership(subtype)
+  case let .attributedType(_, t): return simplifyType(t)
+  case let .genericType(_, _, t): return simplifyType(t)
+  case let .withOwnership(_, subtype): return simplifyType(subtype)
   default: return type
   }
 }
