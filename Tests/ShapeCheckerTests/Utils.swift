@@ -66,14 +66,14 @@ extension XCTestCase {
   }
 }
 
-func assertUnsat(_ result: SolverResult) {
+func assertUnsat(_ result: SolverResult, file: StaticString = #file, line: UInt = #line) {
   guard case .unsat(_) = result else {
-    return XCTFail("Expected unsat, got: \(result)!")
+    return XCTFail("Expected unsat, got: \(result)!", file: file, line: line)
   }
 }
 
-func assertSat(_ result: SolverResult) {
+func assertSat(_ result: SolverResult, file: StaticString = #file, line: UInt = #line) {
   guard case .sat = result else {
-    return XCTFail("Expected sat, got: \(result)!")
+    return XCTFail("Expected sat, got: \(result)!", file: file, line: line)
   }
 }

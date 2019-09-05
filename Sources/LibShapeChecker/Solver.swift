@@ -98,28 +98,28 @@ struct Z3Denotation {
     case let .literal(value):
       return Z3Context.default.literal(value)
     case let .length(of: list):
-      switch list {
-      case let .broadcast(lhs, rhs):
-        return rank(of: broadcast(lhs, rhs))
-      case let .var(v):
-        return rank(of: v)
-      case let .literal(shapeValue):
-        return Z3Context.default.literal(shapeValue.count)
-      }
+      return rank(of: list)
     case let .element(offset, of: list):
-      // NB: Negative offsets are not supported yet, so we treat them as "any value"
-      //     so that they're never involved in a contradiction.
-      guard offset >= 0 else { return nextIntVariable() }
+      let offsetExpr: Z3Expr<Int>
+      let listRank = rank(of: list)
+      if offset < 0 {
+          offsetExpr = Z3Context.default.literal(-offset - 1)
+      } else {
+          offsetExpr = listRank - Z3Context.default.literal(offset + 1)
+      }
+      // NB: This ensures that the lookup is in bounds
+      assumptions.append(listRank > offsetExpr)
+      assumptions.append(offsetExpr >= Z3Context.default.literal(0))
       switch list {
       case let .broadcast(lhs, rhs):
-        return denote(broadcast(lhs, rhs)).call(Z3Context.default.literal(offset))
+        return denote(broadcast(lhs, rhs)).call(offsetExpr)
       case let .var(v):
-        return denote(v).call(Z3Context.default.literal(offset))
+        return denote(v).call(offsetExpr)
       case let .literal(exprs):
-        // NB: Out of bounds accesses will trigger a failure through a different
-        //     set of assertions anyway, so no need to check for that here.
-        guard offset < exprs.count,
-              let expr = exprs[offset] else { return nextIntVariable() }
+        let positiveOffset = offset < 0 ? offset + exprs.count : offset
+        guard positiveOffset < exprs.count,
+              positiveOffset >= 0,
+              let expr = exprs[positiveOffset] else { return nextIntVariable() }
         return denote(expr)
       }
     case let .add(lhs, rhs):
@@ -193,7 +193,7 @@ struct Z3Denotation {
         case let .literal(exprs):
           for (i, maybeDimExpr) in exprs.enumerated() {
             guard let dimExpr = maybeDimExpr else { continue }
-            assumptions.append(denote(v).call(Z3Context.default.literal(i)) == denote(dimExpr))
+            assumptions.append(denote(v).call(Z3Context.default.literal(exprs.count - i - 1)) == denote(dimExpr))
           }
           assumptions.append(rank(of: v) == Z3Context.default.literal(exprs.count))
           return Z3Context.default.true
@@ -245,7 +245,7 @@ struct Z3Denotation {
       let v = nextListVariable()
       for (i, maybeDimExpr) in exprs.enumerated() {
         guard let dimExpr = maybeDimExpr else { continue }
-        assumptions.append(denote(v).call(Z3Context.default.literal(i)) == denote(dimExpr))
+        assumptions.append(denote(v).call(Z3Context.default.literal(exprs.count - i - 1)) == denote(dimExpr))
       }
       assumptions.append(rank(of: v) == Z3Context.default.literal(exprs.count))
       return v
@@ -260,6 +260,17 @@ struct Z3Denotation {
 
   func rank(of v: TaggedListVar) -> Z3Expr<Int> {
     return Z3Context.default.make(intVariable: "\(v)_rank")
+  }
+
+  mutating func rank(of e: ListExpr) -> Z3Expr<Int> {
+    switch e {
+    case let .broadcast(lhs, rhs):
+      return rank(of: broadcast(lhs, rhs))
+    case let .var(v):
+      return rank(of: v)
+    case let .literal(shapeValue):
+      return Z3Context.default.literal(shapeValue.count)
+    }
   }
 }
 

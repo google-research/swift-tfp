@@ -287,8 +287,6 @@ fileprivate class Interpreter {
       //     there's no fundamental reason why we couldn't generalize it.
       guard case let .int(.literal(dim)) = values[0] else { return nil }
       guard case let .list(shape) = values[1] else { return nil }
-      // We add a rank constraint that makes this lookup well defined
-      constraints.append(.expr(.intGt(.length(of: shape), .literal(dim))))
       // NB: We need to have two returns, because the second one is a coroutine token
       return [.int(.element(dim, of: shape)), nil]
 

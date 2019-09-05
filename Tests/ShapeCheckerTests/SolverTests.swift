@@ -13,11 +13,11 @@ final class Z3Tests: XCTestCase {
       (.intEq(.literal(1), .literal(2)), "(= 1 2)"),
       (.intEq(.length(of: s0), .literal(2)), "(= s0_rank 2)"),
       (.intGt(.length(of: s0), .literal(2)), "(> s0_rank 2)"),
-      (.intEq(.element(1, of: s0), .element(2, of: s1)), "(= (s0 1) (s1 2))"),
+      (.intEq(.element(1, of: s0), .element(2, of: s1)), "(= (s0 (- s0_rank 2)) (s1 (- s1_rank 3)))"),
       (.intEq(.literal(1),
               .add(.mul(.element(1, of: s1), .literal(2)),
                    .div(.sub(.element(0, of: s0), .literal(3)), .literal(4)))),
-       "(= 1 (+ (* (s1 1) 2) (div (- (s0 0) 3) 4)))"),
+       "(= 1 (+ (* (s1 (- s1_rank 2)) 2) (div (- (s0 (- s0_rank 1)) 3) 4)))"),
       (.intGt(.literal(1), .literal(2)), "(> 1 2)"),
       (.intGe(.literal(1), .literal(2)), "(>= 1 2)"),
       (.intLt(.literal(1), .literal(2)), "(< 1 2)"),
@@ -25,11 +25,7 @@ final class Z3Tests: XCTestCase {
     ]
     for (expr, expectedDescription) in examples {
       let assertions = denote(expr)
-      guard assertions.count == 1 else {
-        XCTFail("Expected a single assertion!")
-        continue
-      }
-      XCTAssertEqual(assertions[0].description, expectedDescription)
+      XCTAssertEqual(assertions.last?.description, expectedDescription)
     }
   }
 
@@ -75,30 +71,42 @@ final class Z3Tests: XCTestCase {
   func testBroadcast() {
     assertUnsat(verify([
       .expr(.listEq(s2, .broadcast(s0, s1))),
+      .expr(.intEq(.element(-1, of: s0), .literal(2))),
+      .expr(.intEq(.element(-1, of: s1), .literal(3))),
+    ]))
+    assertSat(verify([
+      .expr(.listEq(s2, .broadcast(s0, s1))),
+      .expr(.intEq(.element(-1, of: s0), .literal(1))),
+      .expr(.intEq(.element(-1, of: s1), .literal(3))),
+    ]))
+    assertUnsat(verify([
+      .expr(.listEq(s2, .broadcast(s0, s1))),
+      .expr(.intEq(.element(-1, of: s1), .literal(3))),
+      .expr(.intEq(.element(-1, of: s2), .literal(4))),
+    ]))
+    assertUnsat(verify([
+      .expr(.listEq(s1, .broadcast(s0, .literal([.literal(2), nil, .literal(1)])))),
+      .expr(.intEq(.element(-3, of: s0), .literal(3))),
+    ]))
+    assertUnsat(verify([
+      .expr(.listEq(s1, .broadcast(s0, .literal([.literal(2), nil, .literal(1)])))),
+      .expr(.intEq(.element(-3, of: s1), .literal(3))),
+    ]))
+    assertSat(verify([
+      .expr(.listEq(s1, .broadcast(s0, .literal([.literal(2), nil, .literal(1)])))),
+      .expr(.intEq(.element(-1, of: s0), .literal(3))),
+    ]))
+    assertSat(verify([
+      .expr(.listEq(s2, .broadcast(s0, s1))),
       .expr(.intEq(.element(0, of: s0), .literal(2))),
       .expr(.intEq(.element(0, of: s1), .literal(3))),
     ]))
-    assertSat(verify([
-      .expr(.listEq(s2, .broadcast(s0, s1))),
-      .expr(.intEq(.element(0, of: s0), .literal(1))),
-      .expr(.intEq(.element(0, of: s1), .literal(3))),
-    ]))
     assertUnsat(verify([
       .expr(.listEq(s2, .broadcast(s0, s1))),
+      .expr(.intEq(.element(0, of: s0), .literal(2))),
       .expr(.intEq(.element(0, of: s1), .literal(3))),
-      .expr(.intEq(.element(0, of: s2), .literal(4))),
-    ]))
-    assertUnsat(verify([
-      .expr(.listEq(s1, .broadcast(s0, .literal([.literal(2), nil, .literal(1)])))),
-      .expr(.intEq(.element(0, of: s0), .literal(3))),
-    ]))
-    assertUnsat(verify([
-      .expr(.listEq(s1, .broadcast(s0, .literal([.literal(2), nil, .literal(1)])))),
-      .expr(.intEq(.element(0, of: s1), .literal(3))),
-    ]))
-    assertSat(verify([
-      .expr(.listEq(s1, .broadcast(s0, .literal([.literal(2), nil, .literal(1)])))),
-      .expr(.intEq(.element(1, of: s0), .literal(3))),
+      .expr(.intEq(.length(of: s0), .literal(2))),
+      .expr(.intEq(.length(of: s1), .literal(2))),
     ]))
   }
 

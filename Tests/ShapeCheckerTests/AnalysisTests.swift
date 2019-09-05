@@ -98,10 +98,10 @@ final class AnalysisTests: XCTestCase {
       let analyzer = Analyzer()
       analyzer.analyze(module: module)
       let f = normalize(instantiate(constraintsOf: "f", inside: analyzer.environment))
-      XCTAssertTrue(f.contains(.expr(.intEq(d1, .element(0, of: s0)))))
-      XCTAssertTrue(f.contains(.expr(.intEq(d1, .element(1, of: s0)))))
-      XCTAssertTrue(f.contains(.expr(.intEq(d2, .element(0, of: s0)))))
-      XCTAssertTrue(f.contains(.expr(.intEq(d2, .element(1, of: s0)))))
+      XCTAssertTrue(f.contains(.expr(.intEq(d0, .element(0, of: s1)))))
+      XCTAssertTrue(f.contains(.expr(.intEq(d0, .element(1, of: s1)))))
+      XCTAssertTrue(f.contains(.expr(.intEq(d2, .element(0, of: s1)))))
+      XCTAssertTrue(f.contains(.expr(.intEq(d2, .element(1, of: s1)))))
     }
   }
 
