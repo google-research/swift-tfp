@@ -13,9 +13,9 @@ final class IntegrationTests: XCTestCase {
       return matmul(x, x)
     }
     """
-    withSIL(forSource: matmulCode + code) { module in
+    withSIL(forSource: matmulCode + code) { module, _ in
       let analyzer = Analyzer()
-      analyzer.analyze(module: module)
+      analyzer.analyze(module)
 
       let constraints = instantiate(constraintsOf: "f", inside: analyzer.environment)
       guard !constraints.isEmpty else {
@@ -38,9 +38,9 @@ final class IntegrationTests: XCTestCase {
       assert(pred(x.shape))
     }
     """
-    withSIL(forSource: code) { module in
+    withSIL(forSource: code) { module, _ in
       let analyzer = Analyzer()
-      analyzer.analyze(module: module)
+      analyzer.analyze(module)
       let constraints = instantiate(constraintsOf: "f", inside: analyzer.environment)
       assertUnsat(verify(constraints))
     }
@@ -54,9 +54,39 @@ final class IntegrationTests: XCTestCase {
       assert(x.shape[0] == 3)
     }
     """
-    withSIL(forSource: randnCode + code) { module in
+    withSIL(forSource: randnCode + code) { module, _ in
       let analyzer = Analyzer()
-      analyzer.analyze(module: module)
+      analyzer.analyze(module)
+      let constraints = instantiate(constraintsOf: "f", inside: analyzer.environment)
+      assertUnsat(verify(constraints))
+    }
+  }
+
+  func testStruct() {
+    let code = """
+    struct Matmul {
+      let w: Tensor<Float>
+
+      func callAsFunction(_ input: Tensor<Float>) -> Tensor<Float> {
+        return matmul(input, w)
+      }
+    }
+
+    func makeMatmul(inputs: Int, outputs: Int) -> Matmul {
+      return Matmul(w: randn([inputs, outputs]))
+    }
+
+    @_silgen_name("f")
+    func f() -> Tensor<Float> {
+      let x = randn([2, 3])
+      let layer = makeMatmul(inputs: 10, outputs: 20)
+      return layer(x)
+    }
+    """
+    withSIL(forSource: randnCode + matmulCode + code) { module, silPath in
+      let analyzer = Analyzer()
+      try withAST(forSILPath: silPath, analyzer.analyze)
+      analyzer.analyze(module)
       let constraints = instantiate(constraintsOf: "f", inside: analyzer.environment)
       assertUnsat(verify(constraints))
     }
@@ -67,6 +97,7 @@ final class IntegrationTests: XCTestCase {
     ("testMatmulSingleArg", testMatmulSingleArg),
     ("testCustomPredicate", testCustomPredicate),
     ("testFactory", testFactory),
+    ("testStruct", testStruct),
   ]
 }
 

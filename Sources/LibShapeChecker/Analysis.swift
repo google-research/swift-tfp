@@ -7,14 +7,53 @@ public struct FunctionSummary {
   public let constraints: [Constraint]
 }
 
+public typealias StructDecl = [(name: String, type: Type)]
+
 public typealias Environment = [String: FunctionSummary]
+public typealias TypeEnvironment = [String: StructDecl]
 
 public class Analyzer {
   public var environment: Environment = [:]
+  public var typeEnvironment: TypeEnvironment = [:]
 
   public init() {}
 
-  public func analyze(module: Module) {
+  let supportedStructDecls: Set = [
+    "pattern_binding_decl", "var_decl",
+    "constructor_decl", "destructor_decl", "func_decl",
+    // TODO: struct/class/enum decl?
+  ]
+  public func analyze(_ ast: SExpr) {
+    guard case let .record("source_file", decls) = ast else {
+      // TODO: Warn
+      return
+    }
+    structLoop: for structDecl in decls {
+      guard case let .value(.record("struct_decl", structDeclBody)) = structDecl,
+                     structDeclBody.count > 2,
+            case     .field("range", .sourceRange(_))     = structDeclBody[0],
+            case let .value(.string(structName)) = structDeclBody[1] else { continue }
+      var fields: StructDecl = []
+      for decl in structDeclBody.suffix(from: 2) {
+        // Ignore everything that's not a nested record...
+        guard case let .value(.record(declName, declBody)) = decl else { continue }
+        // but once a record is found, make sure we understand what it means.
+        guard          supportedStructDecls.contains(declName) else { continue structLoop }
+        // Finally, try to see if it declares a new field.
+        guard          declName == "var_decl",
+                       declBody.count >= 3,
+              case     .field("range", .sourceRange(_))   = declBody[0],
+              case let .value(.string(fieldName))         = declBody[1],
+              case let .field("type", .string(fieldTypeName)) = declBody[2],
+                       declBody.contains(.field("readImpl", .symbol("stored"))),
+                   let fieldType = try? Type.parse(fromString: "$" + fieldTypeName) else { continue }
+        fields.append((fieldName, fieldType))
+      }
+      typeEnvironment[structName] = fields
+    }
+  }
+
+  public func analyze(_ module: Module) {
     for f in module.functions {
       analyze(f)
     }
@@ -28,7 +67,7 @@ public class Analyzer {
 
   func analyze(_ block: Block) -> FunctionSummary? {
     let instrDefs = normalizeArrayLiterals(block.instructionDefs)
-    return abstract(Block(block.identifier, block.arguments, instrDefs))
+    return abstract(Block(block.identifier, block.arguments, instrDefs), inside: typeEnvironment)
   }
 
 }

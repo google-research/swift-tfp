@@ -37,7 +37,7 @@ public func withTemporaryFile(_ f: (URL) throws -> ()) throws {
 }
 
 @available(macOS 10.13, *)
-public func withSIL(forFile: String, _ f: (Module) -> ()) throws {
+public func withSIL(forFile: String, _ f: (Module, URL) throws -> ()) throws {
   try withTemporaryFile { tempFile in
     let process = Process()
     process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
@@ -50,7 +50,27 @@ public func withSIL(forFile: String, _ f: (Module) -> ()) throws {
     }
     do {
       let module = try Module.parse(fromSILPath: tempFile.path)
-      f(module)
+      try f(module, tempFile)
+    } catch {
+      throw CompilerInvocationError.parseError(error)
+    }
+  }
+}
+
+@available(macOS 10.13, *)
+public func withAST(forSILPath path: URL, _ f: (SExpr) throws -> ()) throws {
+  try withTemporaryFile { tempFile in
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+    process.arguments = ["swiftc", "-dump-ast", "-o", tempFile.path, "-parse-sil", path.path]
+    do {
+      try process.run()
+      process.waitUntilExit()
+    } catch {
+      throw CompilerInvocationError.invocationError
+    }
+    do {
+      try f(try SExpr.parse(fromPath: tempFile.path))
     } catch {
       throw CompilerInvocationError.parseError(error)
     }

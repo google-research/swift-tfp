@@ -20,9 +20,13 @@ func main() {
   let showSignatures = args.get(showSignaturesOpt) ?? false
 
   do {
-    try withSIL(forFile: fileName) { module in
+    try withSIL(forFile: fileName) { module, silPath in
       let analyzer = Analyzer()
-      analyzer.analyze(module: module)
+      try withAST(forSILPath: silPath) { ast in
+        analyzer.analyze(ast)
+      }
+
+      analyzer.analyze(module)
       for (fn, signature) in analyzer.environment.sorted(by: { $0.0 < $1.0 }) {
         let nontrivialSignature = signature.retExpr != nil && signature.argExprs.contains(where: { $0 != nil })
         guard !signature.constraints.isEmpty || nontrivialSignature else { continue }

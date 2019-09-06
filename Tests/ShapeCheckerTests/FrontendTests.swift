@@ -58,13 +58,13 @@ final class FrontendTests: XCTestCase {
       ])
     ]
     for (cond, expectedExprs) in asserts {
-      withSIL(forSource: makeCheck(cond)) { module in
+      withSIL(forSource: makeCheck(cond)) { module, _ in
         var remaining = expectedExprs
         for function in module.functions {
           if function.blocks.count != 1 { continue }
           let block = function.blocks[0]
           let instrDefs = normalizeArrayLiterals(block.instructionDefs)
-          guard let summary = abstract(Block(block.identifier, block.arguments, instrDefs)) else { continue }
+          guard let summary = abstract(Block(block.identifier, block.arguments, instrDefs), inside: [:]) else { continue }
           remaining = remaining.filter { summary.constraints.contains(.expr($0)) }
         }
         if !remaining.isEmpty {

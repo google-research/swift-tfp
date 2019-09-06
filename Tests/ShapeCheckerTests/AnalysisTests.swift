@@ -28,9 +28,9 @@ final class AnalysisTests: XCTestCase {
       return transpose(x) + 2
     }
     """
-    withSIL(forSource: transposeCode + callTransposeCode) { module in
+    withSIL(forSource: transposeCode + callTransposeCode) { module, _ in
       let analyzer = Analyzer()
-      analyzer.analyze(module: module)
+      analyzer.analyze(module)
       let f = instantiate(constraintsOf: "f",
                           inside: analyzer.environment)
       let transpose = instantiate(constraintsOf: "transpose",
@@ -52,9 +52,9 @@ final class AnalysisTests: XCTestCase {
       assert(pred(x.shape))
     }
     """
-    withSIL(forSource: code) { module in
+    withSIL(forSource: code) { module, _ in
       let analyzer = Analyzer()
-      analyzer.analyze(module: module)
+      analyzer.analyze(module)
       let f = instantiate(constraintsOf: "f", inside: analyzer.environment)
       XCTAssertTrue(normalize(f).contains(
         .expr(.intEq(.element(0, of: s0), .literal(2)))
@@ -69,9 +69,9 @@ final class AnalysisTests: XCTestCase {
       let _ = randn([2, 3])
     }
     """
-    withSIL(forSource: randnCode + code) { module in
+    withSIL(forSource: randnCode + code) { module, _ in
       let analyzer = Analyzer()
-      analyzer.analyze(module: module)
+      analyzer.analyze(module)
       let f = instantiate(constraintsOf: "f", inside: analyzer.environment)
       XCTAssertTrue(normalize(f).contains(
         .expr(.listEq(s0, .literal([.literal(2), .literal(3)])))
@@ -94,14 +94,39 @@ final class AnalysisTests: XCTestCase {
       assert(a2 == b)
     }
     """
-    withSIL(forSource: randnCode + code) { module in
+    withSIL(forSource: randnCode + code) { module, _ in
       let analyzer = Analyzer()
-      analyzer.analyze(module: module)
+      analyzer.analyze(module)
       let f = normalize(instantiate(constraintsOf: "f", inside: analyzer.environment))
       XCTAssertTrue(f.contains(.expr(.intEq(d0, .element(0, of: s1)))))
       XCTAssertTrue(f.contains(.expr(.intEq(d0, .element(1, of: s1)))))
       XCTAssertTrue(f.contains(.expr(.intEq(d2, .element(0, of: s1)))))
       XCTAssertTrue(f.contains(.expr(.intEq(d2, .element(1, of: s1)))))
+    }
+  }
+
+  func testStruct() {
+    let code = """
+    struct Conv {
+      var weight: Tensor<Float>
+      var bias: Tensor<Float>
+      var computedProperty: Int { 4 }
+    }
+    """
+    withSIL(forSource: code) { module, silPath in
+      let analyzer = Analyzer()
+      try withAST(forSILPath: silPath, analyzer.analyze)
+      let tensorType = Type.specializedType(.namedType("Tensor"), [.namedType("Float")])
+      guard let convFields = analyzer.typeEnvironment["Conv"] else {
+        return XCTFail("Failed to find the Conv struct def!")
+      }
+      guard convFields.count == 2,
+            convFields[0].name == "weight",
+            convFields[0].type == tensorType,
+            convFields[1].name == "bias",
+            convFields[1].type == tensorType else {
+        return XCTFail("Struct definition has been recovered incorrectly!")
+      }
     }
   }
 

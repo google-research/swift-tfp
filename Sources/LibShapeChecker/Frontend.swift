@@ -25,9 +25,9 @@ enum BuiltinFunction {
   case shapeEqual
 }
 
-func abstract(_ block: Block) -> FunctionSummary? {
+func abstract(_ block: Block, inside typeEnvironment: TypeEnvironment) -> FunctionSummary? {
   guard block.instructionDefs.count > 0 else { fatalError("Empty block??") }
-  let interpreter = Interpreter(block)
+  let interpreter = Interpreter(block, typeEnvironment)
   let result: Register
   switch block.instructionDefs.last!.instruction {
   case let .return(operand):
@@ -67,6 +67,7 @@ fileprivate class Interpreter {
   var constraints: [Constraint] = []
   var valuation: [Register: AbstractValue] = [:]
   let freshName = count(from: 0)
+  let typeEnvironment: TypeEnvironment
 
   func freshVar(_ type: Type) -> AbstractValue? {
     switch simplifyType(type) {
@@ -74,6 +75,9 @@ fileprivate class Interpreter {
     case .namedType("Bool"): return .bool(.var(freshBoolVar()))
     case .namedType("TensorShape"): return freshShapeValue()
     case let .tupleType(types): return .tuple(types.map(freshVar))
+    case let .namedType(name):
+      guard let fields = typeEnvironment[name] else { return nil }
+      return .tuple(fields.map{ freshVar($0.type) })
     case let t where isTensorType(t): return freshTensorValue()
     default: return nil
     }
@@ -91,7 +95,8 @@ fileprivate class Interpreter {
     return BoolVar(freshName())
   }
 
-  init(_ block: Block) {
+  init(_ block: Block, _ typeEnvironment: TypeEnvironment) {
+    self.typeEnvironment = typeEnvironment
     var instructions = block.instructionDefs.makeIterator()
 
     for argument in block.arguments {
@@ -179,13 +184,20 @@ fileprivate class Interpreter {
                                   zip(argTypes, args).map{ valuation[$0.1, setDefault: freshVar($0.0)]?.expr },
                                   valuation[results[0], setDefault: freshVar(resultType)]?.expr))
 
+      case let .struct(_, operands):
+        updates = [.tuple(operands.map{ valuation[$0.value] })]
+
       case let .structExtract(operand, decl):
-        switch decl.name {
-        case ["Bool", "_value"]:
+        if decl.name == ["Bool", "_value"] {
           updates = [valuation[operand.value]]
-        default:
-          break
         }
+        guard decl.name.count == 2 else { break }
+        let (typeName, fieldName) = (decl.name[0], decl.name[1])
+        guard let fields = typeEnvironment[typeName],
+              let fieldOffset = fields.firstIndex(where: { $0.name == fieldName }),
+              case let .tuple(values) = valuation[operand.value],
+              fieldOffset < values.count else { break }
+        updates = [values[fieldOffset]]
 
       case let .tuple(elements):
         switch elements {
