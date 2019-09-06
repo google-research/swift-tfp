@@ -1,6 +1,7 @@
 * Shape holes
 * Emit warnings from the frontend
-* Support for structs
+* Simplification of constraints when an error occurs
+* Support for explicit init inside structs
 * Propagation of source information through the system
 * Control flow support
 * More efficient verification (e.g. start with roots and only descend if failures are found)

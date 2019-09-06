@@ -124,44 +124,76 @@ func relu(_ x: Tensor<Float>) -> Tensor<Float> {
 }
 
 func dropout(_ input: Tensor<Float>, _ p: Double) -> Tensor<Float> {
-  let result = input + 0
+  let result = input.droppingOut(probability: p)
   assert(result.shape == input.shape)
   return result
 }
 
-func dense(_ input: Tensor<Float>, _ weight: Tensor<Float>, _ bias: Tensor<Float>) -> Tensor<Float> {
-  return matmul(input, weight) .+ bias
-}
-
 ////////////////////////////////////////////////////////////////////////////////
-// Parameter constructors
+// Modules/Layers
 ////////////////////////////////////////////////////////////////////////////////
 
-func conv2dInit(inputs: Int, outputs: Int, kernelSize: (Int, Int)) -> (Tensor<Float>, Tensor<Float>) {
-  return (randn([kernelSize.0, kernelSize.1, inputs, outputs]), randn([outputs]))
+struct Conv2d {
+  let weight: Tensor<Float>
+  let bias: Tensor<Float>
+  let stride: (Int, Int)
+
+  func callAsFunction(_ input: Tensor<Float>) -> Tensor<Float> {
+    return conv2d(input, weight, bias, stride: stride)
+  }
 }
 
-func denseInit(inputs: Int, outputs: Int) -> (Tensor<Float>, Tensor<Float>) {
-  return (randn([inputs, outputs]), randn([outputs]))
+// NB: Unfortunately we don't support structs with explicitly defined init, because
+//     then the members are initialized through pointers. As a workaround we define
+//     the helper constructors outside of the class and delegate to the default one.
+func mkConv2d(inputs: Int, outputs: Int, kernelSize: (Int, Int), stride: (Int, Int) = (1, 1)) -> Conv2d {
+  return Conv2d(weight: randn([kernelSize.0, kernelSize.1, inputs, outputs]),
+                bias: randn([outputs]),
+                stride: stride)
 }
+
+struct Dense {
+  let weight: Tensor<Float>
+  let bias: Tensor<Float>
+
+  func callAsFunction(_ input: Tensor<Float>) -> Tensor<Float> {
+    return matmul(input, weight) .+ bias
+  }
+}
+
+func mkDense(inputs: Int, outputs: Int) -> Dense {
+  return Dense(weight: randn([inputs, outputs]),
+               bias: randn([outputs]))
+}
+
 
 ////////////////////////////////////////////////////////////////////////////////
 // Model implementation
 ////////////////////////////////////////////////////////////////////////////////
 
-func model(_ input: Tensor<Float>,
-           _ w1: Tensor<Float>, _ b1: Tensor<Float>,
-           _ w2: Tensor<Float>, _ b2: Tensor<Float>,
-           _ wd1: Tensor<Float>, _ bd1: Tensor<Float>,
-           _ wd2: Tensor<Float>, _ bd2: Tensor<Float>) -> Tensor<Float> {
-  let c1 = relu(conv2d(input, w1, b1))
-  let p1 = max_pool2d(c1, kernelSize: (2, 2), stride: (2, 2))
-  let c2 = relu(conv2d(p1, w2, b2))
-  let p2 = max_pool2d(c2, kernelSize: (2, 2), stride: (2, 2))
-  let d0 = reshape(p2, [p2.shape[0], p2.shape[1] * p2.shape[2] * p2.shape[3]])
-  let d1 = dropout(dense(d0, wd1, bd1), 0.4)
-  let d2 = dense(d1, wd2, bd2)
-  return d2
+struct Model {
+  let conv1: Conv2d
+  let conv2: Conv2d
+  let dense1: Dense
+  let dense2: Dense
+
+  func callAsFunction(_ input: Tensor<Float>) -> Tensor<Float> {
+    let c1 = relu(conv1(input))
+    let p1 = max_pool2d(c1, kernelSize: (2, 2), stride: (2, 2))
+    let c2 = relu(conv2(p1))
+    let p2 = max_pool2d(c2, kernelSize: (2, 2), stride: (2, 2))
+    let d0 = reshape(p2, [p2.shape[0], p2.shape[1] * p2.shape[2] * p2.shape[3]])
+    let d1 = dropout(dense1(d0), 0.4)
+    let d2 = dense2(d1)
+    return d2
+  }
+}
+
+func mkModel() -> Model {
+  return Model(conv1: mkConv2d(inputs: 1, outputs: 32, kernelSize: (5, 5)),
+               conv2: mkConv2d(inputs: 32, outputs: 64, kernelSize: (5, 5)),
+               dense1: mkDense(inputs: 1024, outputs: 1024),
+               dense2: mkDense(inputs: 1024, outputs: 10))
 }
 
 // TODO: Make this into a proper training loop
@@ -171,14 +203,6 @@ func main(_ input: Tensor<Float>) -> Tensor<Float> {
   assert(iH == 28)
   assert(iW == 28)
 
-  let (w1, b1) = conv2dInit(inputs: 1, outputs: 32, kernelSize: (5, 5))
-  let (w2, b2) = conv2dInit(inputs: 32, outputs: 64, kernelSize: (5, 5))
-  let (wd1, bd1) = denseInit(inputs: 1024, outputs: 1024)
-  let (wd2, bd2) = denseInit(inputs: 1024, outputs: 10)
-
-  return model(input,
-               w1, b1,
-               w2, b2,
-               wd1, bd1,
-               wd2, bd2)
+  let model = mkModel()
+  return model(input)
 }
