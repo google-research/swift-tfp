@@ -81,14 +81,27 @@ public enum Expr: Hashable {
   case compound(CompoundExpr)
 }
 
+public indirect enum SourceLocation: Hashable {
+    case unknown
+    case file(_ path: String, line: Int)
+    case inferred(SourceLocation)
+}
+
 public enum Constraint: Hashable {
-  case expr(BoolExpr)
+  case expr(BoolExpr, SourceLocation)
   // Calls could theoretically be expressed by something like
   // .resultTypeEq(result, .resultTypeCall(name, args))
   // However, there are valid Exprs (e.g. involving compound types)
   // which are not expressible by BoolExprs and this is a way of
   // ensuring that we desugar those before validation happens.
-  case call(_ name: String, _ args: [Expr?], _ result: Expr?)
+  case call(_ name: String, _ args: [Expr?], _ result: Expr?, SourceLocation)
+
+  func withLocation(_ loc: SourceLocation) -> Constraint {
+    switch self {
+    case let .expr(expr, _): return .expr(expr, loc)
+    case let .call(name, args, result, _): return .call(name, args, result, loc)
+    }
+  }
 }
 
 func makeVariableGenerator() -> (Var) -> Var {
@@ -195,10 +208,13 @@ public func substitute(_ e: CompoundExpr, using s: Substitution) -> CompoundExpr
 
 public func substitute(_ c: Constraint, using s: Substitution) -> Constraint {
   switch c {
-  case let .expr(expr):
-    return .expr(substitute(expr, using: s))
-  case let .call(name, args, result):
-    return .call(name, args.map{ $0.map{ substitute($0, using: s) } }, result.map{ substitute($0, using: s) })
+  case let .expr(expr, loc):
+    return .expr(substitute(expr, using: s), loc)
+  case let .call(name, args, result, loc):
+    return .call(name,
+                 args.map{ $0.map{ substitute($0, using: s) } },
+                 result.map{ substitute($0, using: s) },
+                 loc)
   }
 }
 
@@ -216,11 +232,11 @@ public func substitute(_ e: Expr, using s: Substitution) -> Expr {
 
 infix operator ≡: ComparisonPrecedence
 
-func ≡(_ a: Expr, _ b: Expr) -> [Constraint] {
+func ≡(_ a: Expr, _ b: Expr) -> [BoolExpr] {
   switch (a, b) {
-  case let (.int(a), .int(b)): return [.expr(.intEq(a, b))]
-  case let (.list(a), .list(b)): return [.expr(.listEq(a, b))]
-  case let (.bool(a), .bool(b)): return [.expr(.boolEq(a, b))]
+  case let (.int(a), .int(b)): return [.intEq(a, b)]
+  case let (.list(a), .list(b)): return [.listEq(a, b)]
+  case let (.bool(a), .bool(b)): return [.boolEq(a, b)]
   case let (.compound(a), .compound(b)):
     switch (a, b) {
     case let (.tuple(aExprs), .tuple(bExprs)):
@@ -228,7 +244,7 @@ func ≡(_ a: Expr, _ b: Expr) -> [Constraint] {
         fatalError("Equating incompatible tuple expressions")
       }
       return zip(aExprs, bExprs).flatMap {
-        (t: (Expr?, Expr?)) -> [Constraint] in
+        (t: (Expr?, Expr?)) -> [BoolExpr] in
         guard let aExpr = t.0, let bExpr = t.1 else { return [] }
         return aExpr ≡ bExpr
       }
@@ -337,9 +353,9 @@ extension CompoundExpr: CustomStringConvertible {
 extension Constraint: CustomStringConvertible {
   public var description: String {
     switch self {
-    case let .expr(expr):
+    case let .expr(expr, _):
       return expr.description
-    case let .call(name, maybeArgs, maybeRet):
+    case let .call(name, maybeArgs, maybeRet, _):
       let argsDesc = maybeArgs.map{ $0?.description ?? "*" }.joined(separator: ", ")
       if let ret = maybeRet {
         return "\(ret) = \(name)(\(argsDesc))"
@@ -357,6 +373,16 @@ extension Expr: CustomStringConvertible {
     case let .list(expr): return expr.description
     case let .bool(expr): return expr.description
     case let .compound(expr): return expr.description
+    }
+  }
+}
+
+extension SourceLocation: CustomStringConvertible {
+  public var description: String {
+    switch self {
+    case .unknown: return "<Unknown location>"
+    case let .file(path, line: line): return "<\(path):\(line)>"
+    case let .inferred(from): return "<Inferred from \(from)>"
     }
   }
 }

@@ -172,7 +172,7 @@ fileprivate class Interpreter {
         let argTypes = appliedArgTypes + bundleArgTypes
 
         if let kind = getBuiltinFunctionRef(called: name) {
-          updates = interpret(builtinFunction: kind, args: args)
+          updates = interpret(builtinFunction: kind, args: args, at: getLocation(instrDef))
           break
         }
         guard let results = instrDef.result?.valueNames,
@@ -182,7 +182,8 @@ fileprivate class Interpreter {
 
         constraints.append(.call(name,
                                   zip(argTypes, args).map{ valuation[$0.1, setDefault: freshVar($0.0)]?.expr },
-                                  valuation[results[0], setDefault: freshVar(resultType)]?.expr))
+                                  valuation[results[0], setDefault: freshVar(resultType)]?.expr,
+                                  getLocation(instrDef)))
 
       case let .struct(_, operands):
         updates = [.tuple(operands.map{ valuation[$0.value] })]
@@ -224,7 +225,7 @@ fileprivate class Interpreter {
     }
   }
 
-  func interpret(builtinFunction kind: BuiltinFunction, args: [Register]) -> [AbstractValue?]? {
+  func interpret(builtinFunction kind: BuiltinFunction, args: [Register], at loc: SourceLocation) -> [AbstractValue?]? {
     func binaryOp(trailingCount: Int = 0, _ f: (IntExpr, IntExpr) -> AbstractValue) -> [AbstractValue?]? {
       let values = args.compactMap{ valuation[$0] }
       let expectedArgs = trailingCount + 2
@@ -327,8 +328,9 @@ fileprivate class Interpreter {
       let condVar = freshBoolVar()
       constraints.append(.call(name,
                                zip(argTypes, args).map{ valuation[$0.1, setDefault: freshVar($0.0)]?.expr },
-                               .bool(.var(condVar))))
-      constraints.append(.expr(.var(condVar)))
+                               .bool(.var(condVar)),
+                               loc))
+      constraints.append(.expr(.var(condVar), loc))
       return nil
 
     case .broadcast:
@@ -353,6 +355,10 @@ fileprivate class Interpreter {
       fatalError("Expected a function value!")
     }
     return (fnName, args, argTypes)
+  }
+
+  func getLocation(_ instrDef: InstructionDef) -> SourceLocation {
+    return instrDef.sourceInfo?.loc.map{ .file($0.path, line: $0.line) } ?? .unknown
   }
 }
 

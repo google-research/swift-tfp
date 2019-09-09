@@ -92,7 +92,9 @@ class ConstraintInstantiator {
     self.environment = env
     guard let summary = environment[name] else { return }
     let subst = makeSubstitution()
-    let _ = apply(name, to: summary.argExprs.map{ $0.map{ substitute($0, using: subst) }})
+    let _ = apply(name,
+                  to: summary.argExprs.map{ $0.map{ substitute($0, using: subst) }},
+                  at: .unknown)
   }
 
   func makeSubstitution() -> (Var) -> Expr {
@@ -100,7 +102,7 @@ class ConstraintInstantiator {
     return { varMap[$0].expr }
   }
 
-  func apply(_ name: String, to args: [Expr?]) -> Expr? {
+  func apply(_ name: String, to args: [Expr?], at applyLoc: SourceLocation) -> Expr? {
     guard let summary = environment[name] else { return nil }
 
     guard !callStack.contains(name) else { return nil }
@@ -116,19 +118,19 @@ class ConstraintInstantiator {
       //     associated with them.
       guard let formal = maybeFormal else { continue }
       guard let actual = maybeActual else { continue }
-      constraints += substitute(formal, using: subst) ≡ actual
+      constraints += (substitute(formal, using: subst) ≡ actual).map{ .expr($0, .inferred(applyLoc)) }
     }
 
     // Replace the variables in the body of the summary with fresh ones to avoid conflicts.
     for constraint in summary.constraints {
       switch constraint {
-      case let .expr(expr):
-        constraints.append(.expr(substitute(expr, using: subst)))
-      case let .call(name, args, maybeResult):
-        let maybeApplyResult = apply(name, to: args.map{ $0.map{substitute($0, using: subst)} })
+      case let .expr(expr, loc):
+        constraints.append(.expr(substitute(expr, using: subst), loc))
+      case let .call(name, args, maybeResult, loc):
+        let maybeApplyResult = apply(name, to: args.map{ $0.map{substitute($0, using: subst)} }, at: loc)
         if let applyResult = maybeApplyResult,
            let result = maybeResult {
-          constraints += substitute(result, using: subst) ≡ applyResult
+          constraints += (substitute(result, using: subst) ≡ applyResult).map{ .expr($0, .inferred(loc)) }
         }
       }
     }

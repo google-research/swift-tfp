@@ -41,7 +41,7 @@ public func withSIL(forFile: String, _ f: (Module, URL) throws -> ()) throws {
   try withTemporaryFile { tempFile in
     let process = Process()
     process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-    process.arguments = ["swiftc", "-emit-silgen", "-o", tempFile.path, forFile]
+    process.arguments = ["swiftc", "-emit-silgen", "-Xllvm", "-sil-print-debuginfo", "-o", tempFile.path, forFile]
     do {
       try process.run()
       process.waitUntilExit()

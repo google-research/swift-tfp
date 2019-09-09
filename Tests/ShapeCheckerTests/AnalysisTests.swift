@@ -14,9 +14,9 @@ final class AnalysisTests: XCTestCase {
   let b2 = BoolExpr.var(BoolVar(2))
   let b3 = BoolExpr.var(BoolVar(3))
 
-  let normalize = resolveEqualities >>>
+  let normalize = { resolveEqualities($0, shapeOnly: false) } >>>
                   inlineBoolVars >>>
-                  resolveEqualities >>>
+                  { resolveEqualities($0, shapeOnly: false) } >>>
                   alphaNormalize
 
   func testAnalysisThroughCalls() {
@@ -54,8 +54,8 @@ final class AnalysisTests: XCTestCase {
       let analyzer = Analyzer()
       analyzer.analyze(module)
       let f = instantiate(constraintsOf: "f", inside: analyzer.environment)
-      XCTAssertTrue(normalize(f).contains(
-        .expr(.intEq(.element(0, of: s0), 2))
+      XCTAssertTrue(normalize(f).compactMap{ $0.boolExpr }.contains(
+        .intEq(.element(0, of: s0), 2)
       ))
     }
   }
@@ -71,8 +71,8 @@ final class AnalysisTests: XCTestCase {
       let analyzer = Analyzer()
       analyzer.analyze(module)
       let f = instantiate(constraintsOf: "f", inside: analyzer.environment)
-      XCTAssertTrue(normalize(f).contains(
-        .expr(.listEq(s0, .literal([2, 3])))
+      XCTAssertTrue(normalize(f).compactMap{ $0.boolExpr }.contains(
+        .listEq(s0, .literal([2, 3]))
       ))
     }
   }
@@ -95,11 +95,11 @@ final class AnalysisTests: XCTestCase {
     withSIL(forSource: randnCode + code) { module, _ in
       let analyzer = Analyzer()
       analyzer.analyze(module)
-      let f = normalize(instantiate(constraintsOf: "f", inside: analyzer.environment))
-      XCTAssertTrue(f.contains(.expr(.intEq(d0, .element(0, of: s1)))))
-      XCTAssertTrue(f.contains(.expr(.intEq(d0, .element(1, of: s1)))))
-      XCTAssertTrue(f.contains(.expr(.intEq(d2, .element(0, of: s1)))))
-      XCTAssertTrue(f.contains(.expr(.intEq(d2, .element(1, of: s1)))))
+      let f = normalize(instantiate(constraintsOf: "f", inside: analyzer.environment)).compactMap{ $0.boolExpr }
+      XCTAssertTrue(f.contains(.intEq(d0, .element(0, of: s1))))
+      XCTAssertTrue(f.contains(.intEq(d0, .element(1, of: s1))))
+      XCTAssertTrue(f.contains(.intEq(d2, .element(0, of: s1))))
+      XCTAssertTrue(f.contains(.intEq(d2, .element(1, of: s1))))
     }
   }
 
@@ -138,3 +138,10 @@ final class AnalysisTests: XCTestCase {
   ]
 }
 
+
+extension Constraint {
+  var boolExpr: BoolExpr? {
+    guard case let .expr(expr, _) = self else { return nil }
+    return expr
+  }
+}

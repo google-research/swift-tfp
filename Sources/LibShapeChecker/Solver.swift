@@ -1,21 +1,21 @@
 enum SolverResult {
   case sat
   case unknown
-  case unsat([BoolExpr]?)
+  case unsat([Constraint]?)
 }
 
-let optimize = resolveEqualities >>> inlineBoolVars >>> resolveEqualities
+let preprocess = { resolveEqualities($0) } >>> inlineBoolVars >>> { resolveEqualities($0) }
 
 func verify(_ constraints: [Constraint]) -> SolverResult {
   let solver = Z3Context.default.makeSolver()
   var shapeVars = Set<ListVar>()
-  var trackers: [String: BoolExpr] = [:]
+  var trackers: [String: Constraint] = [:]
 
-  for constraint in optimize(constraints) {
+  for constraint in preprocess(constraints) {
     switch constraint {
-    case let .expr(expr):
+    case let .expr(expr, _):
       for assertion in denote(expr) {
-        trackers[solver.assertAndTrack(assertion)] = expr
+        trackers[solver.assertAndTrack(assertion)] = constraint
       }
       // Perform a no-op substitution that has a side effect of gathering
       // all variables appearing in a formula.
@@ -25,7 +25,7 @@ func verify(_ constraints: [Constraint]) -> SolverResult {
         }
         return nil
       })
-    case .call(_, _, _):
+    case .call(_, _, _, _):
       break
     }
   }

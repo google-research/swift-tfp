@@ -32,88 +32,88 @@ final class Z3Tests: XCTestCase {
   func testNonNegativeShapes() {
     // x.shape[0] + 1 == 0 should be unsatisfiable
     assertUnsat(verify([
-      .expr(.intEq(.add(.element(0, of: s0), 1), 0))
+      .expr(.intEq(.add(.element(0, of: s0), 1), 0), .unknown),
     ]))
     // Same if we hide the dependency transitively
     assertUnsat(verify([
-      .expr(.intEq(.element(0, of: s0), .sub(.element(0, of: s1), 1))),
-      .expr(.intEq(.element(0, of: s1), 0))
+      .expr(.intEq(.element(0, of: s0), .sub(.element(0, of: s1), 1)), .unknown),
+      .expr(.intEq(.element(0, of: s1), 0), .unknown),
     ]))
   }
 
   func testLists() {
     // Rank error
     assertUnsat(verify([
-      .expr(.listEq(s0, .literal([nil, nil]))),
-      .expr(.listEq(s0, .literal([1]))),
+      .expr(.listEq(s0, .literal([nil, nil])), .unknown),
+      .expr(.listEq(s0, .literal([1])), .unknown),
     ]))
     assertUnsat(verify([
-      .expr(.listEq(.literal([nil]), .literal([nil, nil]))),
+      .expr(.listEq(.literal([nil]), .literal([nil, nil])), .unknown),
     ]))
     // Those imply x.shape[1] == x.shape[1] + 2
     assertUnsat(verify([
-      .expr(.listEq(s0, .literal([nil, .add(.element(1, of: s0), 2)]))),
+      .expr(.listEq(s0, .literal([nil, .add(.element(1, of: s0), 2)])), .unknown),
     ]))
     assertUnsat(verify([
-      .expr(.listEq(s0, s1)),
-      .expr(.listEq(s1, s2)),
-      .expr(.listEq(s0, .literal([nil, .add(.element(1, of: s2), 1)]))),
+      .expr(.listEq(s0, s1), .unknown),
+      .expr(.listEq(s1, s2), .unknown),
+      .expr(.listEq(s0, .literal([nil, .add(.element(1, of: s2), 1)])), .unknown),
     ]))
     assertUnsat(verify([
-      .expr(.listEq(.literal([.add(.element(1, of: s2), 1)]), .literal([.element(1, of: s2)]))),
+      .expr(.listEq(.literal([.add(.element(1, of: s2), 1)]), .literal([.element(1, of: s2)])), .unknown),
     ]))
     assertUnsat(verify([
-      .expr(.intGt(.length(of: .literal([nil])), 2)),
-      .expr(.intEq(.element(2, of: .literal([nil])), 1)),
+      .expr(.intGt(.length(of: .literal([nil])), 2), .unknown),
+      .expr(.intEq(.element(2, of: .literal([nil])), 1), .unknown),
     ]))
   }
 
   func testBroadcast() {
     assertUnsat(verify([
-      .expr(.listEq(s2, .broadcast(s0, s1))),
-      .expr(.intEq(.element(-1, of: s0), 2)),
-      .expr(.intEq(.element(-1, of: s1), 3)),
+      .expr(.listEq(s2, .broadcast(s0, s1)), .unknown),
+      .expr(.intEq(.element(-1, of: s0), 2), .unknown),
+      .expr(.intEq(.element(-1, of: s1), 3), .unknown),
     ]))
     assertSat(verify([
-      .expr(.listEq(s2, .broadcast(s0, s1))),
-      .expr(.intEq(.element(-1, of: s0), 1)),
-      .expr(.intEq(.element(-1, of: s1), 3)),
+      .expr(.listEq(s2, .broadcast(s0, s1)), .unknown),
+      .expr(.intEq(.element(-1, of: s0), 1), .unknown),
+      .expr(.intEq(.element(-1, of: s1), 3), .unknown),
     ]))
     assertUnsat(verify([
-      .expr(.listEq(s2, .broadcast(s0, s1))),
-      .expr(.intEq(.element(-1, of: s1), 3)),
-      .expr(.intEq(.element(-1, of: s2), 4)),
+      .expr(.listEq(s2, .broadcast(s0, s1)), .unknown),
+      .expr(.intEq(.element(-1, of: s1), 3), .unknown),
+      .expr(.intEq(.element(-1, of: s2), 4), .unknown),
     ]))
     assertUnsat(verify([
-      .expr(.listEq(s1, .broadcast(s0, .literal([2, nil, 1])))),
-      .expr(.intEq(.element(-3, of: s0), 3)),
+      .expr(.listEq(s1, .broadcast(s0, .literal([2, nil, 1]))), .unknown),
+      .expr(.intEq(.element(-3, of: s0), 3), .unknown),
     ]))
     assertUnsat(verify([
-      .expr(.listEq(s1, .broadcast(s0, .literal([2, nil, 1])))),
-      .expr(.intEq(.element(-3, of: s1), 3)),
+      .expr(.listEq(s1, .broadcast(s0, .literal([2, nil, 1]))), .unknown),
+      .expr(.intEq(.element(-3, of: s1), 3), .unknown),
     ]))
     assertSat(verify([
-      .expr(.listEq(s1, .broadcast(s0, .literal([2, nil, 1])))),
-      .expr(.intEq(.element(-1, of: s0), 3)),
+      .expr(.listEq(s1, .broadcast(s0, .literal([2, nil, 1]))), .unknown),
+      .expr(.intEq(.element(-1, of: s0), 3), .unknown),
     ]))
     assertSat(verify([
-      .expr(.listEq(s2, .broadcast(s0, s1))),
-      .expr(.intEq(.element(0, of: s0), 2)),
-      .expr(.intEq(.element(0, of: s1), 3)),
+      .expr(.listEq(s2, .broadcast(s0, s1)), .unknown),
+      .expr(.intEq(.element(0, of: s0), 2), .unknown),
+      .expr(.intEq(.element(0, of: s1), 3), .unknown),
     ]))
     assertUnsat(verify([
-      .expr(.listEq(s2, .broadcast(s0, s1))),
-      .expr(.intEq(.element(0, of: s0), 2)),
-      .expr(.intEq(.element(0, of: s1), 3)),
-      .expr(.intEq(.length(of: s0), 2)),
-      .expr(.intEq(.length(of: s1), 2)),
+      .expr(.listEq(s2, .broadcast(s0, s1)), .unknown),
+      .expr(.intEq(.element(0, of: s0), 2), .unknown),
+      .expr(.intEq(.element(0, of: s1), 3), .unknown),
+      .expr(.intEq(.length(of: s0), 2), .unknown),
+      .expr(.intEq(.length(of: s1), 2), .unknown),
     ]))
   }
 
   func testBroadcastRank() {
     assertUnsat(verify([
-      .expr(.listEq(s2, .broadcast(.literal([2, 3]), .literal([nil])))),
-      .expr(.intEq(.length(of: s2), 3))
+      .expr(.listEq(s2, .broadcast(.literal([2, 3]), .literal([nil]))), .unknown),
+      .expr(.intEq(.length(of: s2), 3), .unknown),
     ]))
   }
 

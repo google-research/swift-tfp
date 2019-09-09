@@ -46,8 +46,11 @@ func main() {
         case let .unsat(maybeCore):
           if let core = maybeCore {
             print("❌ Derived a contradiction from:")
-            for expr in processCore(core.map{ .expr($0) }) {
-              print("  - \(expr)")
+            for constraint in processCore(core) {
+              guard case let .expr(expr, loc) = constraint else {
+                fatalError("Unexpected constraint type in the core!")
+              }
+              print("  - \(expr) \(loc)")
             }
           } else {
             print("⚠️ Found a contradiction, but I can't explain!")

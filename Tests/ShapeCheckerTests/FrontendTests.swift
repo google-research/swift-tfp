@@ -64,7 +64,7 @@ final class FrontendTests: XCTestCase {
           let block = function.blocks[0]
           let instrDefs = normalizeArrayLiterals(block.instructionDefs)
           guard let summary = abstract(Block(block.identifier, block.arguments, instrDefs), inside: [:]) else { continue }
-          remaining = remaining.filter { summary.constraints.contains(.expr($0)) }
+          remaining = remaining.filter { summary.constraints.contains(.expr($0, .unknown)) }
         }
         if !remaining.isEmpty {
           XCTFail("Failed to find the following constraints: \(remaining)")
