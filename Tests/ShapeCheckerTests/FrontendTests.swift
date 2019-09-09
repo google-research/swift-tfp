@@ -16,26 +16,25 @@ final class FrontendTests: XCTestCase {
     let yVar = ListExpr.var(ListVar(1))
     let iVar = IntExpr.var(IntVar(2))
     let xyNotScalar: [BoolExpr] = [
-      .intGt(.length(of: xVar), .literal(0)),
-      .intGt(.length(of: yVar), .literal(0)),
+      .intGt(.length(of: xVar), 0),
+      .intGt(.length(of: yVar), 0),
     ]
     let asserts: [(String, [BoolExpr])] = [
-      ("x.rank == 2", [.intEq(.length(of: xVar), .literal(2))]),
+      ("x.rank == 2", [.intEq(.length(of: xVar), 2)]),
       ("x.rank == y.rank", [.intEq(.length(of: xVar), .length(of: yVar))]),
-      // For some reason libSIL fails when arithmetic is present
-      //("x.rank == y.rank + 4", [.intEq(.length(of: xVar), .add(.length(of: yVar), .literal(4)))]),
+      ("x.rank == y.rank + 4", [.intEq(.length(of: xVar), .add(.length(of: yVar), .literal(4)))]),
       ("x.shape == y.shape", [.listEq(xVar, yVar)]),
       ("x.shape[1] == y.shape[2]", [
-        .intGt(.length(of: xVar), .literal(1)),
-        .intGt(.length(of: yVar), .literal(2)),
+        .intGt(.length(of: xVar), 1),
+        .intGt(.length(of: yVar), 2),
         .intEq(.element(1, of: xVar), .element(2, of: yVar))
       ]),
       ("x.shape[0] == y.shape[0] + y.shape[1] * y.shape[2] / y.shape[3]", [
-        .intGt(.length(of: xVar), .literal(0)),
-        .intGt(.length(of: yVar), .literal(0)),
-        .intGt(.length(of: yVar), .literal(1)),
-        .intGt(.length(of: yVar), .literal(2)),
-        .intGt(.length(of: yVar), .literal(3)),
+        .intGt(.length(of: xVar), 0),
+        .intGt(.length(of: yVar), 0),
+        .intGt(.length(of: yVar), 1),
+        .intGt(.length(of: yVar), 2),
+        .intGt(.length(of: yVar), 3),
         .intEq(.element(0, of: xVar), .add(
           .element(0, of: yVar),
           .div(
@@ -53,8 +52,8 @@ final class FrontendTests: XCTestCase {
        xyNotScalar + [.intLe(.element(0, of: xVar), .element(0, of: yVar))]),
       ("x.shape == y.shape", [.listEq(xVar, yVar)]),
       ("x.shape == [1, 2 + y.shape[0], i]", [
-        .intGt(.length(of: yVar), .literal(0)),
-        .listEq(xVar, .literal([.literal(1), .add(.literal(2), .element(0, of: yVar)), iVar]))
+        .intGt(.length(of: yVar), 0),
+        .listEq(xVar, .literal([1, .add(2, .element(0, of: yVar)), iVar]))
       ])
     ]
     for (cond, expectedExprs) in asserts {

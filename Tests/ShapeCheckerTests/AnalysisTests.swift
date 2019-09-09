@@ -55,7 +55,7 @@ final class AnalysisTests: XCTestCase {
       analyzer.analyze(module)
       let f = instantiate(constraintsOf: "f", inside: analyzer.environment)
       XCTAssertTrue(normalize(f).contains(
-        .expr(.intEq(.element(0, of: s0), .literal(2)))
+        .expr(.intEq(.element(0, of: s0), 2))
       ))
     }
   }
@@ -72,7 +72,7 @@ final class AnalysisTests: XCTestCase {
       analyzer.analyze(module)
       let f = instantiate(constraintsOf: "f", inside: analyzer.environment)
       XCTAssertTrue(normalize(f).contains(
-        .expr(.listEq(s0, .literal([.literal(2), .literal(3)])))
+        .expr(.listEq(s0, .literal([2, 3])))
       ))
     }
   }

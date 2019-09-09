@@ -1,4 +1,3 @@
-* Clean up .literal(2) now that IntExpr conforms to ExpressibleByIntegerLiteral
 * Propagation of source information through the system
 * Emit warnings from the frontend
 * Simplification through shape indexing (when a shape is only used in indexing)

@@ -219,11 +219,11 @@ public func simplify(_ expr: IntExpr) -> IntExpr {
 public func simplify(_ expr: ListExpr) -> ListExpr {
   struct Break: Error {}
   func tryBroadcast(_ lhs: [IntExpr?], _ rhs: [IntExpr?]) throws -> [IntExpr?] {
-    let paddedLhs = Array(repeating: .literal(1), count: max(rhs.count - lhs.count, 0)) + lhs
-    let paddedRhs = Array(repeating: .literal(1), count: max(lhs.count - rhs.count, 0)) + rhs
+    let paddedLhs = Array(repeating: 1, count: max(rhs.count - lhs.count, 0)) + lhs
+    let paddedRhs = Array(repeating: 1, count: max(lhs.count - rhs.count, 0)) + rhs
     return try zip(paddedLhs, paddedRhs).map{ (l, r) in
-      if (l == nil || l == .literal(1)) { return r }
-      if (r == nil || r == .literal(1)) { return l }
+      if (l == nil || l == 1) { return r }
+      if (r == nil || r == 1) { return l }
       if (r == l) { return l }
       throw Break()
     }
