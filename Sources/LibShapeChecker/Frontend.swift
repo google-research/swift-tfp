@@ -330,7 +330,7 @@ fileprivate class Interpreter {
                                zip(argTypes, args).map{ valuation[$0.1, setDefault: freshVar($0.0)]?.expr },
                                .bool(.var(condVar)),
                                loc))
-      constraints.append(.expr(.var(condVar), loc))
+      constraints.append(.expr(.var(condVar), .asserted, loc))
       return nil
 
     case .broadcast:

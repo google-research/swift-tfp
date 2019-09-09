@@ -16,46 +16,57 @@ final class TransformsTests: XCTestCase {
 
   func testResolveEqualities() {
     XCTAssertEqual(resolveEqualities([
-      .expr(.listEq(s0, s1), .unknown),
-      .expr(.listEq(s1, .literal([nil])), .unknown),
-      .expr(.intGt(d1, .literal(2)), .unknown),
-      .expr(.intEq(d0, d1), .unknown),
-    ], shapeOnly: false), [
-      .expr(.listEq(s0, .literal([nil])), .unknown),
-      .expr(.intGt(d0, .literal(2)), .unknown),
+      .expr(.listEq(s0, s1), .asserted, .unknown),
+      .expr(.listEq(s1, .literal([nil])), .asserted, .unknown),
+      .expr(.intGt(d1, 2), .asserted, .unknown),
+      .expr(.intEq(d0, d1), .asserted, .unknown),
+    ], strength: .everything), [
+      .expr(.listEq(s0, .literal([nil])), .asserted, .unknown),
+      .expr(.intGt(d0, 2), .asserted, .unknown),
     ])
     XCTAssertEqual(resolveEqualities([
-      .expr(.listEq(s0, s1), .unknown),
-      .expr(.listEq(s1, .literal([nil])), .unknown),
-      .expr(.intGt(d1, .literal(2)), .unknown),
-      .expr(.intEq(d0, d1), .unknown),
-    ]), [
-      .expr(.listEq(s0, .literal([nil])), .unknown),
-      .expr(.intGt(d1, .literal(2)), .unknown),
-      .expr(.intEq(d0, d1), .unknown),
+      .expr(.listEq(s0, s1), .asserted, .unknown),
+      .expr(.listEq(s1, .literal([nil])), .asserted, .unknown),
+      .expr(.intGt(d2, 2), .asserted, .unknown),
+      .expr(.intEq(d0, d1), .asserted, .unknown),
+      .expr(.intEq(d1, d2), .implied, .unknown),
+    ], strength: .all(of: [.shape, .implied])), [
+      .expr(.listEq(s0, .literal([nil])), .asserted, .unknown),
+      .expr(.intGt(d1, 2), .asserted, .unknown),
+      .expr(.intEq(d0, d1), .asserted, .unknown),
+    ])
+    XCTAssertEqual(resolveEqualities([
+      .expr(.listEq(s0, s1), .asserted, .unknown),
+      .expr(.listEq(s1, .literal([nil])), .asserted, .unknown),
+      .expr(.intGt(d1, .literal(2)), .asserted, .unknown),
+      .expr(.intEq(d0, d1), .asserted, .unknown),
+    ], strength: .shape), [
+      .expr(.listEq(s0, .literal([nil])), .asserted, .unknown),
+      .expr(.intGt(d1, .literal(2)), .asserted, .unknown),
+      .expr(.intEq(d0, d1), .asserted, .unknown),
     ])
   }
 
   func testInlineBoolVars() {
     XCTAssertEqual(inlineBoolVars([
-      .expr(b0, .unknown),
-      .expr(.boolEq(b0, .intGt(d0, .literal(2))), .unknown),
+      .expr(b0, .asserted, .unknown),
+      .expr(.boolEq(b0, .intGt(d0, .literal(2))), .asserted, .unknown),
     ]), [
-      .expr(.intGt(d0, .literal(2)), .unknown),
+      .expr(.intGt(d0, .literal(2)), .asserted, .unknown),
     ])
     // Not perfect, but good enough for now
     XCTAssertEqual(inlineBoolVars([
-      .expr(b1, .unknown),
-      .expr(.boolEq(b1, b0), .unknown),
-      .expr(.boolEq(b0, .intGt(d0, .literal(4))), .unknown),
+      .expr(b1, .asserted, .unknown),
+      .expr(.boolEq(b1, b0), .asserted, .unknown),
+      .expr(.boolEq(b0, .intGt(d0, .literal(4))), .asserted, .unknown),
     ]), [
-      .expr(b0, .unknown),
-      .expr(.boolEq(b0, .intGt(d0, .literal(4))), .unknown),
+      .expr(b0, .asserted, .unknown),
+      .expr(.boolEq(b0, .intGt(d0, .literal(4))), .asserted, .unknown),
     ])
     let hard: [Constraint] = [
-      .expr(.boolEq(b0, b1), .unknown),
-      .expr(.boolEq(b0, .intGt(d0, .literal(4))), .unknown),
-      .expr(b1, .unknown),
+      .expr(.boolEq(b0, b1), .asserted, .unknown),
+      .expr(.boolEq(b0, .intGt(d0, .literal(4))), .asserted, .unknown),
+      .expr(b1, .asserted, .unknown),
     ]
     XCTAssertEqual(inlineBoolVars(hard), hard)
   }
@@ -79,50 +90,50 @@ final class TransformsTests: XCTestCase {
 
   func testDeduplicate() {
     XCTAssertEqual(deduplicate([
-      .expr(.intEq(.element(1, of: s0), 2), .unknown),
-      .expr(.intEq(.element(0, of: s0), 4), .unknown),
-      .expr(.intEq(.element(1, of: s0), 2), .unknown),
-      .expr(.listEq(s0, .literal([nil, 2])), .unknown),
-      .expr(.intEq(.element(1, of: s0), 2), .unknown),
-      .expr(.listEq(s0, .literal([nil, 2])), .unknown),
+      .expr(.intEq(.element(1, of: s0), 2), .asserted, .unknown),
+      .expr(.intEq(.element(0, of: s0), 4), .asserted, .unknown),
+      .expr(.intEq(.element(1, of: s0), 2), .asserted, .unknown),
+      .expr(.listEq(s0, .literal([nil, 2])), .asserted, .unknown),
+      .expr(.intEq(.element(1, of: s0), 2), .asserted, .unknown),
+      .expr(.listEq(s0, .literal([nil, 2])), .asserted, .unknown),
     ]), [
-      .expr(.intEq(.element(1, of: s0), 2), .unknown),
-      .expr(.intEq(.element(0, of: s0), 4), .unknown),
-      .expr(.listEq(s0, .literal([nil, 2])), .unknown),
+      .expr(.intEq(.element(1, of: s0), 2), .asserted, .unknown),
+      .expr(.intEq(.element(0, of: s0), 4), .asserted, .unknown),
+      .expr(.listEq(s0, .literal([nil, 2])), .asserted, .unknown),
     ])
   }
 
   func testInline() {
     // If we read the expressions in order then we cannot remove the second one
     let nonInlinable: [Constraint] = [
-      .expr(.intGt(d0, d1), .unknown),
-      .expr(.intEq(d0, 2), .unknown),
+      .expr(.intGt(d0, d1), .asserted, .unknown),
+      .expr(.intEq(d0, 2), .asserted, .unknown),
     ]
     XCTAssertEqual(inline(nonInlinable), nonInlinable)
 
     XCTAssertEqual(inline([
-      .expr(.intEq(d0, .add(d1, d2)), .unknown),
-      .expr(.intEq(d0, 2), .unknown),
+      .expr(.intEq(d0, .add(d1, d2)), .asserted, .unknown),
+      .expr(.intEq(d0, 2), .asserted, .unknown),
     ]), [
-      .expr(.intEq(.add(d1, d2), 2), .unknown),
+      .expr(.intEq(.add(d1, d2), 2), .asserted, .unknown),
     ])
 
     XCTAssertEqual(inline([
-      .expr(.intEq(d0, .add(d1, d2)), .unknown),
-      .expr(.intEq(d1, .sub(d0, 2)), .unknown),
-      .expr(.intEq(d0, 2), .unknown),
+      .expr(.intEq(d0, .add(d1, d2)), .asserted, .unknown),
+      .expr(.intEq(d1, .sub(d0, 2)), .asserted, .unknown),
+      .expr(.intEq(d0, 2), .asserted, .unknown),
     ]), [
-      .expr(.intEq(d1, .sub(.add(d1, d2), 2)), .unknown),
-      .expr(.intEq(.add(d1, d2), 2), .unknown),
+      .expr(.intEq(d1, .sub(.add(d1, d2), 2)), .asserted, .unknown),
+      .expr(.intEq(.add(d1, d2), 2), .asserted, .unknown),
     ])
 
     XCTAssertEqual(inline([
-      .expr(.intEq(d0, .add(2, 3)), .unknown),
-      .expr(.intEq(d1, .mul(d0, d0)), .unknown),
-      .expr(.intEq(d2, .sub(d1, 5)), .unknown),
-      .expr(.intEq(.element(0, of: s0), d2), .unknown)
+      .expr(.intEq(d0, .add(2, 3)), .asserted, .unknown),
+      .expr(.intEq(d1, .mul(d0, d0)), .asserted, .unknown),
+      .expr(.intEq(d2, .sub(d1, 5)), .asserted, .unknown),
+      .expr(.intEq(.element(0, of: s0), d2), .asserted, .unknown)
     ]), [
-      .expr(.intEq(.element(0, of: s0), 20), .unknown),
+      .expr(.intEq(.element(0, of: s0), 20), .asserted, .unknown),
     ])
   }
 

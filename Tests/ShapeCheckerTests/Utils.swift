@@ -77,3 +77,10 @@ func assertSat(_ result: SolverResult, file: StaticString = #file, line: UInt = 
     return XCTFail("Expected sat, got: \(result)!", file: file, line: line)
   }
 }
+
+extension Constraint {
+  var boolExpr: BoolExpr? {
+    guard case let .expr(expr, _, _) = self else { return nil }
+    return expr
+  }
+}

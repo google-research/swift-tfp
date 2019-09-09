@@ -2,7 +2,7 @@
 import SIL
 import SPMUtility
 
-let processCore = deduplicate >>> { inline($0) }
+let processCore = deduplicate >>> { inline($0) } >>> alphaNormalize
 
 @available(macOS 10.13, *)
 func main() {
@@ -47,10 +47,15 @@ func main() {
           if let core = maybeCore {
             print("❌ Derived a contradiction from:")
             for constraint in processCore(core) {
-              guard case let .expr(expr, loc) = constraint else {
-                fatalError("Unexpected constraint type in the core!")
+              guard case let .expr(expr, origin, loc) = constraint else {
+                fatalError("Unexpected constraint type in the unsat core!")
               }
-              print("  - \(expr) \(loc)")
+              let locExplanation: String
+              switch origin {
+              case .implied: locExplanation = "implied by"
+              case .asserted: locExplanation = "from"
+              }
+              print("  - \(expr) \(locExplanation) \(loc)")
             }
           } else {
             print("⚠️ Found a contradiction, but I can't explain!")

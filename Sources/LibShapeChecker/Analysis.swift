@@ -118,19 +118,19 @@ class ConstraintInstantiator {
       //     associated with them.
       guard let formal = maybeFormal else { continue }
       guard let actual = maybeActual else { continue }
-      constraints += (substitute(formal, using: subst) ≡ actual).map{ .expr($0, .inferred(applyLoc)) }
+      constraints += (substitute(formal, using: subst) ≡ actual).map{ .expr($0, .implied, applyLoc) }
     }
 
     // Replace the variables in the body of the summary with fresh ones to avoid conflicts.
     for constraint in summary.constraints {
       switch constraint {
-      case let .expr(expr, loc):
-        constraints.append(.expr(substitute(expr, using: subst), loc))
+      case let .expr(expr, origin, loc):
+        constraints.append(.expr(substitute(expr, using: subst), origin, loc))
       case let .call(name, args, maybeResult, loc):
         let maybeApplyResult = apply(name, to: args.map{ $0.map{substitute($0, using: subst)} }, at: loc)
         if let applyResult = maybeApplyResult,
            let result = maybeResult {
-          constraints += (substitute(result, using: subst) ≡ applyResult).map{ .expr($0, .inferred(loc)) }
+          constraints += (substitute(result, using: subst) ≡ applyResult).map{ .expr($0, .implied, loc) }
         }
       }
     }

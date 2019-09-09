@@ -84,11 +84,17 @@ public enum Expr: Hashable {
 public indirect enum SourceLocation: Hashable {
     case unknown
     case file(_ path: String, line: Int)
-    case inferred(SourceLocation)
+}
+
+// NB: If a constraint is implied then the source location points
+//     to the source location of the expression it was inferred from.
+public enum ConstraintOrigin: Hashable {
+    case asserted
+    case implied
 }
 
 public enum Constraint: Hashable {
-  case expr(BoolExpr, SourceLocation)
+  case expr(BoolExpr, ConstraintOrigin, SourceLocation)
   // Calls could theoretically be expressed by something like
   // .resultTypeEq(result, .resultTypeCall(name, args))
   // However, there are valid Exprs (e.g. involving compound types)
@@ -98,7 +104,7 @@ public enum Constraint: Hashable {
 
   func withLocation(_ loc: SourceLocation) -> Constraint {
     switch self {
-    case let .expr(expr, _): return .expr(expr, loc)
+    case let .expr(expr, origin, _): return .expr(expr, origin, loc)
     case let .call(name, args, result, _): return .call(name, args, result, loc)
     }
   }
@@ -208,8 +214,8 @@ public func substitute(_ e: CompoundExpr, using s: Substitution) -> CompoundExpr
 
 public func substitute(_ c: Constraint, using s: Substitution) -> Constraint {
   switch c {
-  case let .expr(expr, loc):
-    return .expr(substitute(expr, using: s), loc)
+  case let .expr(expr, origin, loc):
+    return .expr(substitute(expr, using: s), origin, loc)
   case let .call(name, args, result, loc):
     return .call(name,
                  args.map{ $0.map{ substitute($0, using: s) } },
@@ -353,7 +359,7 @@ extension CompoundExpr: CustomStringConvertible {
 extension Constraint: CustomStringConvertible {
   public var description: String {
     switch self {
-    case let .expr(expr, _):
+    case let .expr(expr, _, _):
       return expr.description
     case let .call(name, maybeArgs, maybeRet, _):
       let argsDesc = maybeArgs.map{ $0?.description ?? "*" }.joined(separator: ", ")
@@ -380,9 +386,8 @@ extension Expr: CustomStringConvertible {
 extension SourceLocation: CustomStringConvertible {
   public var description: String {
     switch self {
-    case .unknown: return "<Unknown location>"
-    case let .file(path, line: line): return "<\(path):\(line)>"
-    case let .inferred(from): return "<Inferred from \(from)>"
+    case .unknown: return "an unknown location"
+    case let .file(path, line: line): return "\(path):\(line)"
     }
   }
 }

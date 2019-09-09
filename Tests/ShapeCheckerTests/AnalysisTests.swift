@@ -14,9 +14,9 @@ final class AnalysisTests: XCTestCase {
   let b2 = BoolExpr.var(BoolVar(2))
   let b3 = BoolExpr.var(BoolVar(3))
 
-  let normalize = { resolveEqualities($0, shapeOnly: false) } >>>
+  let normalize = { resolveEqualities($0, strength: .everything) } >>>
                   inlineBoolVars >>>
-                  { resolveEqualities($0, shapeOnly: false) } >>>
+                  { resolveEqualities($0, strength: .everything) } >>>
                   alphaNormalize
 
   func testAnalysisThroughCalls() {
@@ -136,12 +136,4 @@ final class AnalysisTests: XCTestCase {
     ("testTuples", testTuples),
     ("testStruct", testStruct),
   ]
-}
-
-
-extension Constraint {
-  var boolExpr: BoolExpr? {
-    guard case let .expr(expr, _) = self else { return nil }
-    return expr
-  }
 }

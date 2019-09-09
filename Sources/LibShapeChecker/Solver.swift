@@ -4,7 +4,9 @@ enum SolverResult {
   case unsat([Constraint]?)
 }
 
-let preprocess = { resolveEqualities($0) } >>> inlineBoolVars >>> { resolveEqualities($0) }
+let preprocess = { resolveEqualities($0, strength: .all(of: [.shape, .implied])) } >>>
+                 inlineBoolVars >>>
+                 { resolveEqualities($0, strength: .all(of: [.shape, .implied])) }
 
 func verify(_ constraints: [Constraint]) -> SolverResult {
   let solver = Z3Context.default.makeSolver()
@@ -13,7 +15,7 @@ func verify(_ constraints: [Constraint]) -> SolverResult {
 
   for constraint in preprocess(constraints) {
     switch constraint {
-    case let .expr(expr, _):
+    case let .expr(expr, _, _):
       for assertion in denote(expr) {
         trackers[solver.assertAndTrack(assertion)] = constraint
       }
