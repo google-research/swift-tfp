@@ -72,70 +72,6 @@ public class Analyzer {
 
 }
 
-func simplify(_ constraints: [Constraint]) -> [Constraint] {
-  var equalityClasses = DefaultDict<Var, UnionFind<Var>>{ UnionFind($0) }
-
-  let subset: [Constraint] = constraints.compactMap { (constraint: Constraint) -> Constraint? in
-    switch constraint {
-    case let .expr(expr):
-      switch expr {
-      case let .listEq(.var(lhs), .var(rhs)):
-        union(equalityClasses[.list(lhs)], equalityClasses[.list(rhs)])
-        return nil
-      case let .intEq(.var(lhs), .var(rhs)):
-        union(equalityClasses[.int(lhs)], equalityClasses[.int(rhs)])
-        return nil
-      case let .boolEq(.var(lhs), .var(rhs)):
-        union(equalityClasses[.bool(lhs)], equalityClasses[.bool(rhs)])
-        return nil
-      default:
-        return .expr(expr)
-      }
-    case .call(_, _, _):
-      return constraint
-    }
-  }
-
-  return subset.map {
-    substitute($0, using: { representative(equalityClasses[$0]).expr })
-  }
-}
-
-// Assertion instantiations produce patterns of the form:
-// b4 = <cond>, b4
-// This function tries to find those and inline them.
-func inlineBoolVars(_ constraints: [Constraint]) -> [Constraint] {
-  var usedBoolVars = Set<BoolVar>()
-  func gatherBoolVars(_ constraint: Constraint) {
-    let _ = substitute(constraint) {
-      if case let .bool(v) = $0 { usedBoolVars.insert(v) }
-      return nil
-    }
-  }
-
-  var exprs: [BoolVar: BoolExpr] = [:]
-  for constraint in constraints {
-    if case let .expr(.boolEq(.var(v), expr)) = constraint, exprs[v] == nil {
-      exprs[v] = expr
-      gatherBoolVars(.expr(expr))
-    } else if case .expr(.var(_)) = constraint {
-      // Do nothing
-    } else {
-      gatherBoolVars(constraint)
-    }
-  }
-
-  return constraints.compactMap { constraint in
-    if case let .expr(.boolEq(.var(v), _)) = constraint, !usedBoolVars.contains(v) {
-      return nil
-    } else if case let .expr(.var(v)) = constraint, !usedBoolVars.contains(v) {
-      return exprs[v].map{ .expr($0) } ?? constraint
-    }
-    return constraint
-  }
-}
-
-
 ////////////////////////////////////////////////////////////////////////////////
 // MARK: - Instantiation of constraints for the call chain
 
@@ -143,29 +79,6 @@ public func instantiate(constraintsOf name: String,
                  inside env: Environment) -> [Constraint] {
   let instantiator = ConstraintInstantiator(name, env)
   return instantiator.constraints
-}
-
-infix operator ≡: ComparisonPrecedence
-
-fileprivate func ≡(_ a: Expr, _ b: Expr) -> [Constraint] {
-  switch (a, b) {
-  case let (.int(a), .int(b)): return [.expr(.intEq(a, b))]
-  case let (.list(a), .list(b)): return [.expr(.listEq(a, b))]
-  case let (.bool(a), .bool(b)): return [.expr(.boolEq(a, b))]
-  case let (.compound(a), .compound(b)):
-    switch (a, b) {
-    case let (.tuple(aExprs), .tuple(bExprs)):
-      guard aExprs.count == bExprs.count else {
-        fatalError("Equating incompatible tuple expressions")
-      }
-      return zip(aExprs, bExprs).flatMap {
-        (t: (Expr?, Expr?)) -> [Constraint] in
-        guard let aExpr = t.0, let bExpr = t.1 else { return [] }
-        return aExpr ≡ bExpr
-      }
-    }
-  default: fatalError("Equating expressions of different types!")
-  }
 }
 
 class ConstraintInstantiator {

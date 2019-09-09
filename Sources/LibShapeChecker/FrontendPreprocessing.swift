@@ -75,7 +75,7 @@ func normalizeArrayLiterals(_ instrDefs: [InstructionDef]) -> [InstructionDef] {
 
       // The first element is processed differently than all other, and
       // it's simply stored to the base address.
-      guard case let .store(firstValue, _) = baseAddressUses[0].instruction else { return [instrDef] }
+      guard case let .store(firstValue, _, _) = baseAddressUses[0].instruction else { return [instrDef] }
       elements.append(firstValue)
 
 
@@ -88,7 +88,7 @@ func normalizeArrayLiterals(_ instrDefs: [InstructionDef]) -> [InstructionDef] {
               case .int(i) = literals[index.value],
               let addr = indexAddr.onlyResult,
               let store = uses[addr].only,
-              case let .store(value, _) = store.instruction else { return [instrDef] }
+              case let .store(value, _, _) = store.instruction else { return [instrDef] }
         elements.append(value)
         lastStoreAddr = addr
       }
@@ -101,7 +101,7 @@ func normalizeArrayLiterals(_ instrDefs: [InstructionDef]) -> [InstructionDef] {
 
       replacedTuples[lastStoreAddr] = (arrayReg, elements, arrayType, elementType)
       return [instrDef]
-    case let .store(_, address):
+    case let .store(_, _, address):
       guard let (arrayReg, elements, arrayType, elementType) = replacedTuples[address.value] else { return [instrDef] }
       return [instrDef,
               InstructionDef(nil,

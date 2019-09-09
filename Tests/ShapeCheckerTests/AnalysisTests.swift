@@ -14,12 +14,10 @@ final class AnalysisTests: XCTestCase {
   let b2 = BoolExpr.var(BoolVar(2))
   let b3 = BoolExpr.var(BoolVar(3))
 
-  func alphaNormalize(_ constraints: [Constraint]) -> [Constraint] {
-    var rename = DefaultDict<Var, Var>(withDefault: makeVariableGenerator())
-    return constraints.map{ substitute($0, using: { rename[$0].expr }) }
-  }
-
-  lazy var normalize = simplify >>> inlineBoolVars >>> simplify >>> self.alphaNormalize
+  let normalize = resolveEqualities >>>
+                  inlineBoolVars >>>
+                  resolveEqualities >>>
+                  alphaNormalize
 
   func testAnalysisThroughCalls() {
     let callTransposeCode = """
@@ -130,45 +128,13 @@ final class AnalysisTests: XCTestCase {
     }
   }
 
-  func testSimplify() {
-    XCTAssertEqual(simplify([
-      .expr(.listEq(s0, s1)),
-      .expr(.listEq(s1, .literal([nil]))),
-      .expr(.intGt(d1, .literal(2))),
-      .expr(.intEq(d0, d1)),
-    ]), [
-      .expr(.listEq(s0, .literal([nil]))),
-      .expr(.intGt(d0, .literal(2))),
-    ])
-  }
-
-  func testInlineBoolVars() {
-    XCTAssertEqual(inlineBoolVars([
-      .expr(b0),
-      .expr(.boolEq(b0, .intGt(d0, .literal(2)))),
-    ]), [
-      .expr(.intGt(d0, .literal(2))),
-    ])
-    // Not perfect, but good enough for now
-    XCTAssertEqual(inlineBoolVars([
-      .expr(b1),
-      .expr(.boolEq(b1, b0)),
-      .expr(.boolEq(b0, .intGt(d0, .literal(4)))),
-    ]), [
-      .expr(b0),
-      .expr(.boolEq(b0, .intGt(d0, .literal(4)))),
-    ])
-    let hard: [Constraint] = [
-      .expr(.boolEq(b0, b1)),
-      .expr(.boolEq(b0, .intGt(d0, .literal(4)))),
-      .expr(b1),
-    ]
-    XCTAssertEqual(inlineBoolVars(hard), hard)
-  }
 
   static var allTests = [
     ("testAnalysisThroughCalls", testAnalysisThroughCalls),
     ("testCustomPredicate", testCustomPredicate),
+    ("testFactory", testFactory),
+    ("testTuples", testTuples),
+    ("testStruct", testStruct),
   ]
 }
 

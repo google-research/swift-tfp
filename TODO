@@ -1,7 +1,8 @@
-* Shape holes
-* Emit warnings from the frontend
-* Simplification of constraints when an error occurs
-* Support for explicit init inside structs
+* Clean up .literal(2) now that IntExpr conforms to ExpressibleByIntegerLiteral
 * Propagation of source information through the system
+* Emit warnings from the frontend
+* Simplification through shape indexing (when a shape is only used in indexing)
+* Shape holes
+* Support for explicit init inside structs
 * Control flow support
 * More efficient verification (e.g. start with roots and only descend if failures are found)

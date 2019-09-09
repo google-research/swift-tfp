@@ -29,7 +29,7 @@ public enum Var: Hashable {
   }
 }
 
-public indirect enum IntExpr: Equatable {
+public indirect enum IntExpr: Hashable, ExpressibleByIntegerLiteral {
   // NB: No variables on this level. All integral qualities are derived from
   //     list expressions for now.
   case `var`(IntVar)
@@ -43,15 +43,19 @@ public indirect enum IntExpr: Equatable {
   case sub(IntExpr, IntExpr)
   case mul(IntExpr, IntExpr)
   case div(IntExpr, IntExpr)
+
+  public init(integerLiteral lit: Int) {
+    self = .literal(lit)
+  }
 }
 
-public indirect enum ListExpr: Equatable {
+public indirect enum ListExpr: Hashable {
   case `var`(ListVar)
   case literal([IntExpr?])
   case broadcast(ListExpr, ListExpr)
 }
 
-public indirect enum BoolExpr: Equatable {
+public indirect enum BoolExpr: Hashable {
   case `var`(BoolVar)
   case and([BoolExpr])
   case intEq(IntExpr, IntExpr)
@@ -66,18 +70,18 @@ public indirect enum BoolExpr: Equatable {
   //     during call resolution.
 }
 
-public enum CompoundExpr: Equatable {
+public enum CompoundExpr: Hashable {
   case tuple([Expr?])
 }
 
-public enum Expr: Equatable {
+public enum Expr: Hashable {
   case int(IntExpr)
   case list(ListExpr)
   case bool(BoolExpr)
   case compound(CompoundExpr)
 }
 
-public enum Constraint: Equatable {
+public enum Constraint: Hashable {
   case expr(BoolExpr)
   // Calls could theoretically be expressed by something like
   // .resultTypeEq(result, .resultTypeCall(name, args))
@@ -85,11 +89,6 @@ public enum Constraint: Equatable {
   // which are not expressible by BoolExprs and this is a way of
   // ensuring that we desugar those before validation happens.
   case call(_ name: String, _ args: [Expr?], _ result: Expr?)
-
-  var expr: BoolExpr? {
-    guard case let .expr(subexpr) = self else { return nil }
-    return subexpr
-  }
 }
 
 func makeVariableGenerator() -> (Var) -> Var {
@@ -211,6 +210,33 @@ public func substitute(_ e: Expr, using s: Substitution) -> Expr {
   case let .compound(expr): return .compound(substitute(expr, using: s))
   }
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// MARK: - Generic equality operator
+
+infix operator ≡: ComparisonPrecedence
+
+func ≡(_ a: Expr, _ b: Expr) -> [Constraint] {
+  switch (a, b) {
+  case let (.int(a), .int(b)): return [.expr(.intEq(a, b))]
+  case let (.list(a), .list(b)): return [.expr(.listEq(a, b))]
+  case let (.bool(a), .bool(b)): return [.expr(.boolEq(a, b))]
+  case let (.compound(a), .compound(b)):
+    switch (a, b) {
+    case let (.tuple(aExprs), .tuple(bExprs)):
+      guard aExprs.count == bExprs.count else {
+        fatalError("Equating incompatible tuple expressions")
+      }
+      return zip(aExprs, bExprs).flatMap {
+        (t: (Expr?, Expr?)) -> [Constraint] in
+        guard let aExpr = t.0, let bExpr = t.1 else { return [] }
+        return aExpr ≡ bExpr
+      }
+    }
+  default: fatalError("Equating expressions of different types!")
+  }
+}
+
 
 ////////////////////////////////////////////////////////////////////////////////
 // MARK: - CustomStringConvertible instances

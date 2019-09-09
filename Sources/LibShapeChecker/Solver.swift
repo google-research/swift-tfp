@@ -4,7 +4,7 @@ enum SolverResult {
   case unsat([BoolExpr]?)
 }
 
-let optimize = simplify >>> inlineBoolVars >>> simplify
+let optimize = resolveEqualities >>> inlineBoolVars >>> resolveEqualities
 
 func verify(_ constraints: [Constraint]) -> SolverResult {
   let solver = Z3Context.default.makeSolver()

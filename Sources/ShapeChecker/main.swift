@@ -2,6 +2,8 @@
 import SIL
 import SPMUtility
 
+let processCore = deduplicate >>> { inline($0) }
+
 @available(macOS 10.13, *)
 func main() {
   let parser = ArgumentParser(usage: "<SIL path>",
@@ -44,7 +46,7 @@ func main() {
         case let .unsat(maybeCore):
           if let core = maybeCore {
             print("❌ Derived a contradiction from:")
-            for expr in core {
+            for expr in processCore(core.map{ .expr($0) }) {
               print("  - \(expr)")
             }
           } else {
