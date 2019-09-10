@@ -13,6 +13,7 @@ public typealias Environment = [String: FunctionSummary]
 public typealias TypeEnvironment = [String: StructDecl]
 
 public class Analyzer {
+  public var warnings: [String: [Warning]] = [:]
   public var environment: Environment = [:]
   public var typeEnvironment: TypeEnvironment = [:]
 
@@ -61,8 +62,10 @@ public class Analyzer {
 
   func analyze(_ function: Function) {
     guard function.blocks.count == 1 else { return }
-    let maybeSummary = analyze(function.blocks[0])
-    environment[function.name] = maybeSummary
+    let funcWarnings = captureWarnings {
+      environment[function.name] = analyze(function.blocks[0])
+    }
+    warnings[function.name] = funcWarnings
   }
 
   func analyze(_ block: Block) -> FunctionSummary? {
@@ -138,6 +141,23 @@ class ConstraintInstantiator {
 
     guard let result = summary.retExpr else { return nil }
     return substitute(result, using: subst)
+  }
+}
+
+func warnAboutUnresolvedAsserts(_ constraints: [Constraint]) {
+  var varUses: [Var: Int] = [:]
+  for constraint in constraints {
+    let _ = substitute(constraint, using: { varUses[$0, default: 0] += 1; return nil })
+  }
+
+  var seenLocations = Set<SourceLocation>()
+  for constraint in constraints {
+    if case let .expr(.var(v), .asserted, location) = constraint,
+       varUses[.bool(v)] == 1,
+       !seenLocations.contains(location) {
+      warn("Failed to recover an assert", location)
+      seenLocations.insert(location)
+    }
   }
 }
 

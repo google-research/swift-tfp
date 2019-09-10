@@ -26,6 +26,10 @@ struct Colors {
     try withColor("34", f)
   }
 
+  static func withYellow(_ f: () throws -> ()) rethrows {
+    try withColor("33", f)
+  }
+
   static func withGray(_ f: () throws -> ()) rethrows {
     try withColor("90", f)
   }
@@ -43,15 +47,16 @@ struct Colors {
 struct LineCache {
   var lines: [String: [String]] = [:]
 
-  mutating func print(_ path: String, line: Int) throws {
+  mutating func print(_ path: String, line: Int, leftPadding: Int) throws {
     if !lines.keys.contains(path) {
       let data = try String(contentsOfFile: path, encoding: .utf8)
       lines[path] = Array(data.split(separator: "\n", omittingEmptySubsequences: false)).map{ String($0) }
     }
+    let padding = String(repeating: " ", count: leftPadding)
     let file = lines[path]!
     let inBounds = { 0 <= $0 && $0 < file.count }
     Colors.withBlue {
-      Swift.print("            | ", terminator: "")
+      Swift.print("\(padding)      | ", terminator: "")
     }
     if inBounds(line - 2) {
       Colors.withGray {
@@ -59,13 +64,13 @@ struct LineCache {
       }
     }
     Colors.withBlue {
-      Swift.print("      \(line.description.leftPad(to: 5)) | ", terminator: "")
+      Swift.print("\(padding)\(line.description.leftPad(to: 5)) | ", terminator: "")
     }
     if inBounds(line - 1) {
       Swift.print(file[line - 1])
     }
     Colors.withBlue {
-      Swift.print("            | ", terminator: "")
+      Swift.print("\(padding)      | ", terminator: "")
     }
     if inBounds(line) {
       Colors.withGray {

@@ -321,9 +321,7 @@ fileprivate class Interpreter {
         fatalError("Assert expects four arguments")
       }
       guard let (name: name, args: args, argTypes: argTypes) = resolveFunction(args[0]) else {
-        // TODO: Turn into a proper log/warning
-        print("Failed to recover an assert!")
-        return nil
+        fatalError("Failed to resolve an asserted function!")
       }
       let condVar = freshBoolVar()
       constraints.append(.call(name,
@@ -356,10 +354,10 @@ fileprivate class Interpreter {
     }
     return (fnName, args, argTypes)
   }
+}
 
-  func getLocation(_ instrDef: InstructionDef) -> SourceLocation {
-    return instrDef.sourceInfo?.loc.map{ .file($0.path, line: $0.line, parent: nil) } ?? .unknown
-  }
+func getLocation(_ instrDef: InstructionDef) -> SourceLocation {
+  return instrDef.sourceInfo?.loc.map{ .file($0.path, line: $0.line, parent: nil) } ?? .unknown
 }
 
 fileprivate func getBuiltinFunctionRef(called name: String) -> BuiltinFunction? {

@@ -9,9 +9,11 @@ struct DefUse {
 
   init?(_ instrDefs: [InstructionDef]) {
     self.instrDefs = instrDefs
-    for (i, instr) in instrDefs.enumerated() {
-      // TODO: Warn
-      guard let readList = instr.instruction.operandNames else { return nil }
+    for (i, instrDef) in instrDefs.enumerated() {
+      guard let readList = instrDef.instruction.operandNames else {
+        warn("Failed to analyze instruction \(instrDef.instruction)", getLocation(instrDef))
+        return nil
+      }
       for register in Set(readList) {
         uses[register].append(i)
       }
@@ -37,8 +39,9 @@ enum ALAbstractValue: Equatable {
 // annotate code patterns looking like literal allocation with a single
 // instruction that informs the frontend about the array elements.
 func normalizeArrayLiterals(_ instrDefs: [InstructionDef]) -> [InstructionDef] {
+  let (literals, usesArrayAllocation) = gatherLiterals(instrDefs)
+  guard usesArrayAllocation else { return instrDefs }
   guard let uses = DefUse(instrDefs) else { return instrDefs }
-  let literals = gatherLiterals(instrDefs)
   var replacedTuples: [Register: (Register, [Register], Type, Type)] = [:]
 
   return instrDefs.flatMap { (instrDef: InstructionDef) -> [InstructionDef] in
@@ -117,9 +120,10 @@ func normalizeArrayLiterals(_ instrDefs: [InstructionDef]) -> [InstructionDef] {
   }
 }
 
-func gatherLiterals(_ instrDefs: [InstructionDef]) -> [Register: ALAbstractValue] {
+func gatherLiterals(_ instrDefs: [InstructionDef]) -> ([Register: ALAbstractValue], Bool) {
   let allocateUninitalizedArrayUSR = "$ss27_allocateUninitializedArrayySayxG_BptBwlF"
   var valuation: [Register: ALAbstractValue] = [:]
+  var usesArrayAllocation = false
 
   for instrDef in instrDefs {
     switch instrDef.instruction {
@@ -128,13 +132,14 @@ func gatherLiterals(_ instrDefs: [InstructionDef]) -> [Register: ALAbstractValue
       valuation[resultReg] = .int(value)
     case .functionRef(allocateUninitalizedArrayUSR, _):
       guard let resultReg = instrDef.onlyResult else { break }
+      usesArrayAllocation = true
       valuation[resultReg] = .allocateFuncRef
     default:
       break
     }
   }
 
-  return valuation
+  return (valuation, usesArrayAllocation)
 }
 
 fileprivate extension Array {
