@@ -358,7 +358,7 @@ fileprivate class Interpreter {
   }
 
   func getLocation(_ instrDef: InstructionDef) -> SourceLocation {
-    return instrDef.sourceInfo?.loc.map{ .file($0.path, line: $0.line) } ?? .unknown
+    return instrDef.sourceInfo?.loc.map{ .file($0.path, line: $0.line, parent: nil) } ?? .unknown
   }
 }
 

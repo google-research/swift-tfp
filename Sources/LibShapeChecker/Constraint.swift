@@ -82,8 +82,23 @@ public enum Expr: Hashable {
 }
 
 public indirect enum SourceLocation: Hashable {
-    case unknown
-    case file(_ path: String, line: Int)
+  case unknown
+  case file(_ path: String, line: Int, parent: SourceLocation?)
+
+  func withParent(_ newParent: SourceLocation?) -> SourceLocation {
+    switch self {
+    case .unknown: return .unknown
+    case let .file(path, line: l, parent: _): return .file(path, line: l, parent: newParent)
+    }
+  }
+
+  var stack: [SourceLocation] {
+    switch self {
+    case .unknown: return []
+    case let .file(_, line: _, parent: parent):
+      return (parent?.stack ?? []) + [self]
+    }
+  }
 }
 
 // NB: If a constraint is implied then the source location points
@@ -387,7 +402,7 @@ extension SourceLocation: CustomStringConvertible {
   public var description: String {
     switch self {
     case .unknown: return "an unknown location"
-    case let .file(path, line: line): return "\(path):\(line)"
+    case let .file(path, line: line, parent: _): return "\(path):\(line)"
     }
   }
 }

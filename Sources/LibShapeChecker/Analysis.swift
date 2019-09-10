@@ -94,7 +94,7 @@ class ConstraintInstantiator {
     let subst = makeSubstitution()
     let _ = apply(name,
                   to: summary.argExprs.map{ $0.map{ substitute($0, using: subst) }},
-                  at: .unknown)
+                  at: nil)
   }
 
   func makeSubstitution() -> (Var) -> Expr {
@@ -102,7 +102,7 @@ class ConstraintInstantiator {
     return { varMap[$0].expr }
   }
 
-  func apply(_ name: String, to args: [Expr?], at applyLoc: SourceLocation) -> Expr? {
+  func apply(_ name: String, to args: [Expr?], at applyLoc: SourceLocation?) -> Expr? {
     guard let summary = environment[name] else { return nil }
 
     guard !callStack.contains(name) else { return nil }
@@ -118,7 +118,7 @@ class ConstraintInstantiator {
       //     associated with them.
       guard let formal = maybeFormal else { continue }
       guard let actual = maybeActual else { continue }
-      constraints += (substitute(formal, using: subst) ≡ actual).map{ .expr($0, .implied, applyLoc) }
+      constraints += (substitute(formal, using: subst) ≡ actual).map{ .expr($0, .implied, applyLoc ?? .unknown) }
     }
 
     // Replace the variables in the body of the summary with fresh ones to avoid conflicts.
@@ -126,7 +126,8 @@ class ConstraintInstantiator {
       switch constraint {
       case let .expr(expr, origin, loc):
         constraints.append(.expr(substitute(expr, using: subst), origin, loc))
-      case let .call(name, args, maybeResult, loc):
+      case let .call(name, args, maybeResult, noParentLoc):
+        let loc = noParentLoc.withParent(applyLoc)
         let maybeApplyResult = apply(name, to: args.map{ $0.map{substitute($0, using: subst)} }, at: loc)
         if let applyResult = maybeApplyResult,
            let result = maybeResult {
