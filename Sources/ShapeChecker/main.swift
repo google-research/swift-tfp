@@ -22,6 +22,7 @@ func main() {
   let showSignatures = args.get(showSignaturesOpt) ?? false
 
   do {
+    var lineCache = LineCache()
     try withSIL(forFile: fileName) { module, silPath in
       let analyzer = Analyzer()
       try withAST(forSILPath: silPath) { ast in
@@ -52,10 +53,16 @@ func main() {
               }
               let locExplanation: String
               switch origin {
-              case .implied: locExplanation = "implied by"
-              case .asserted: locExplanation = "from"
+              case .implied: locExplanation = "Implied by"
+              case .asserted: locExplanation = "Asserted at"
               }
-              print("  - \(expr) \(locExplanation) \(loc)")
+              Colors.withBold {
+                print("  - \(expr)")
+              }
+              print("      \(locExplanation) \(loc):")
+              if case let .file(path, line: line) = loc {
+                try? lineCache.print(path, line: line)
+              }
             }
           } else {
             print("⚠️ Found a contradiction, but I can't explain!")
