@@ -21,9 +21,9 @@ public func deduplicate(_ constraints: [Constraint]) -> [Constraint] {
 
 // Tries to iteratively go over expressions, simplify them, and in case they
 // equate a variable with an expression, inline the definition of this variable
-// into all following constraints. The maximal multiplicative increase in the size
-// of an expression is controlled by the upToSize argument.
-public func inline(_ originalConstraints: [Constraint], upToSize: Int = 20) -> [Constraint] {
+// into all following constraints.
+func inline(_ originalConstraints: [Constraint],
+            canInline: (Constraint) -> Bool = { $0.complexity <= 20 }) -> [Constraint] {
   var inlined: [Var: Expr] = [:]
   var inlineForbidden = Set<Var>()
 
@@ -39,13 +39,8 @@ public func inline(_ originalConstraints: [Constraint], upToSize: Int = 20) -> [
         return nil
       }))
       if !inlineForbidden.contains(v) {
-        if expr.complexity <= upToSize {
-          inlined[v] = expr
-          return nil
-        } else {
-          inlineForbidden.insert(v)
-          return (v.expr, expr)
-        }
+        inlined[v] = expr
+        return nil
       } else {
         return (v.expr, expr)
       }
@@ -56,27 +51,31 @@ public func inline(_ originalConstraints: [Constraint], upToSize: Int = 20) -> [
     (constraint: Constraint) -> [Constraint] in
     switch constraint {
     case let .expr(.listEq(.var(v), expr), origin, loc):
+      guard canInline(constraint) else { break }
       if let (lhs, rhs) = handleEquality(.list(v), .list(expr)) {
         return (lhs ≡ rhs).map{ .expr($0, origin, loc) }
       }
       return []
     case let .expr(.intEq(.var(v), expr), origin, loc):
+      guard canInline(constraint) else { break }
       if let (lhs, rhs) = handleEquality(.int(v), .int(expr)) {
         return (lhs ≡ rhs).map{ .expr($0, origin, loc) }
       }
       return []
     case let .expr(.boolEq(.var(v), expr), origin, loc):
+      guard canInline(constraint) else { break }
       if let (lhs, rhs) = handleEquality(.bool(v), .bool(expr)) {
         return (lhs ≡ rhs).map{ .expr($0, origin, loc) }
       }
       return []
     default:
-      return [simplify(substitute(constraint,
-                                  using: { inlineForbidden.insert($0); return inlined[$0] }))]
+      break
     }
+    return [simplify(substitute(constraint,
+                                using: { inlineForbidden.insert($0); return inlined[$0] }))]
   }
 
-  return inlined.isEmpty ? constraints : inline(constraints)
+  return inlined.isEmpty ? constraints : inline(constraints, canInline: canInline)
 }
 
 public enum EqualityResolutionStrength {

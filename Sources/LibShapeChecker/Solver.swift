@@ -4,8 +4,22 @@ enum SolverResult {
   case unsat([Constraint]?)
 }
 
-let preprocess = { resolveEqualities($0, strength: .all(of: [.shape, .implied])) } >>>
+func isImpliedShapeEq(_ constraint: Constraint) -> Bool {
+  switch constraint {
+  case .expr(.listEq(_, _), .implied, _): return true
+  default: return false
+  }
+}
+
+// First, resolve the unnecessary equations that have been added at call sites.
+// This should have exposed the boolean conditions that are then asserted directly,
+// so we attemp to inline those next.
+// Finally, before we attempt to resolve all shape equalities (for performance reasons)
+// try to inline the implied ones into those that were asserted to make it more likely
+// that user-written assertions show up in unsat cores.
+let preprocess = { resolveEqualities($0, strength: .implied) } >>>
                  inlineBoolVars >>>
+                 { inline($0, canInline: isImpliedShapeEq) } >>>
                  { resolveEqualities($0, strength: .all(of: [.shape, .implied])) }
 
 func verify(_ constraints: [Constraint]) -> SolverResult {
