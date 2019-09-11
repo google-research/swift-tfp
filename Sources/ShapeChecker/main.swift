@@ -23,7 +23,9 @@ func main() {
 
       analyzer.analyze(module)
       for (fn, signature) in analyzer.environment.sorted(by: { $0.0 < $1.0 }) {
-        guard shouldVerify(signature) else { continue }
+        let constraints = instantiate(constraintsOf: fn, inside: analyzer.environment)
+
+        guard shouldShow(fn, analyzer, constraints) else { continue }
 
         Colors.withBold {
           print("\n\(fn)")
@@ -33,7 +35,6 @@ func main() {
           print(signature.prettyDescription)
         }
 
-        let constraints = instantiate(constraintsOf: fn, inside: analyzer.environment)
         if showWarnings {
           printWarnings(analyzer.warnings[fn, default: []], constraints)
         }
@@ -45,11 +46,10 @@ func main() {
   }
 }
 
-func shouldVerify(_ signature: FunctionSummary) -> Bool {
-  let nontrivialSignature =
-    signature.retExpr != nil &&
-    signature.argExprs.contains(where: { $0 != nil })
-  return !signature.constraints.isEmpty || nontrivialSignature
+func shouldShow(_ name: String, _ analyzer: Analyzer, _ constraints: [Constraint]) -> Bool {
+  return showSignatures ||
+         constraints.contains(where: { $0.origin != .implied }) ||
+         !(analyzer.warnings[name]?.isEmpty ?? true)
 }
 
 func printWarnings(_ frontendWarnings: [Warning], _ constraints: [Constraint]) {
