@@ -119,8 +119,6 @@ struct Z3Denotation {
     case let .expr(expr, _, _):
       let result = denote(expr)
       return assumptions + [result]
-    case .call(_, _, _, _):
-      return []
     }
   }
 

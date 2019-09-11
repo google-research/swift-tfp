@@ -81,24 +81,20 @@ public enum Expr: Hashable {
   case compound(CompoundExpr)
 }
 
-public indirect enum SourceLocation: Hashable {
-  case unknown
-  case file(_ path: String, line: Int, parent: SourceLocation?)
+public indirect enum CallStack: Hashable {
+  case top
+  case frame(SourceLocation?, caller: CallStack)
 
-  func withParent(_ newParent: SourceLocation?) -> SourceLocation {
+  var callLocations: [SourceLocation?] {
     switch self {
-    case .unknown: return .unknown
-    case let .file(path, line: l, parent: _): return .file(path, line: l, parent: newParent)
+    case .top: return []
+    case let .frame(loc, caller: parent): return parent.callLocations + [loc]
     }
   }
+}
 
-  var stack: [SourceLocation] {
-    switch self {
-    case .unknown: return []
-    case let .file(_, line: _, parent: parent):
-      return (parent?.stack ?? []) + [self]
-    }
-  }
+public enum SourceLocation: Hashable {
+  case file(String, line: Int)
 }
 
 // NB: If a constraint is implied then the source location points
@@ -108,19 +104,34 @@ public enum ConstraintOrigin: Hashable {
     case implied
 }
 
-public enum Constraint: Hashable {
-  case expr(BoolExpr, ConstraintOrigin, SourceLocation)
+public enum RawConstraint: Hashable {
+  case expr(BoolExpr, SourceLocation?)
   // Calls could theoretically be expressed by something like
   // .resultTypeEq(result, .resultTypeCall(name, args))
   // However, there are valid Exprs (e.g. involving compound types)
   // which are not expressible by BoolExprs and this is a way of
   // ensuring that we desugar those before validation happens.
-  case call(_ name: String, _ args: [Expr?], _ result: Expr?, SourceLocation)
+  case call(_ name: String, _ args: [Expr?], _ result: Expr?, SourceLocation?)
+}
 
-  func withLocation(_ loc: SourceLocation) -> Constraint {
+public enum Constraint: Hashable {
+  case expr(BoolExpr, ConstraintOrigin, CallStack)
+
+  var expr: BoolExpr {
     switch self {
-    case let .expr(expr, origin, _): return .expr(expr, origin, loc)
-    case let .call(name, args, result, _): return .call(name, args, result, loc)
+    case let .expr(expr, _, _): return expr
+    }
+  }
+
+  var origin: ConstraintOrigin {
+    switch self {
+    case let .expr(_, origin, _): return origin
+    }
+  }
+
+  var stack: CallStack {
+    switch self {
+    case let .expr(_, _, stack): return stack
     }
   }
 }
@@ -229,15 +240,22 @@ public func substitute(_ e: CompoundExpr, using s: Substitution) -> CompoundExpr
   }
 }
 
-public func substitute(_ c: Constraint, using s: Substitution) -> Constraint {
+public func substitute(_ c: RawConstraint, using s: Substitution) -> RawConstraint {
   switch c {
-  case let .expr(expr, origin, loc):
-    return .expr(substitute(expr, using: s), origin, loc)
+  case let .expr(expr, loc):
+    return .expr(substitute(expr, using: s), loc)
   case let .call(name, args, result, loc):
     return .call(name,
                  args.map{ $0.map{ substitute($0, using: s) } },
                  result.map{ substitute($0, using: s) },
                  loc)
+  }
+}
+
+public func substitute(_ c: Constraint, using s: Substitution) -> Constraint {
+  switch c {
+  case let .expr(expr, origin, loc):
+    return .expr(substitute(expr, using: s), origin, loc)
   }
 }
 
@@ -375,10 +393,10 @@ extension CompoundExpr: CustomStringConvertible {
   }
 }
 
-extension Constraint: CustomStringConvertible {
+extension RawConstraint: CustomStringConvertible {
   public var description: String {
     switch self {
-    case let .expr(expr, _, _):
+    case let .expr(expr, _):
       return expr.description
     case let .call(name, maybeArgs, maybeRet, _):
       let argsDesc = maybeArgs.map{ $0?.description ?? "*" }.joined(separator: ", ")
@@ -387,6 +405,14 @@ extension Constraint: CustomStringConvertible {
       } else {
         return "\(name)(\(argsDesc))"
       }
+    }
+  }
+}
+
+extension Constraint: CustomStringConvertible {
+  public var description: String {
+    switch self {
+    case let .expr(expr, _, _): return expr.description
     }
   }
 }
@@ -405,8 +431,13 @@ extension Expr: CustomStringConvertible {
 extension SourceLocation: CustomStringConvertible {
   public var description: String {
     switch self {
-    case .unknown: return "an unknown location"
-    case let .file(path, line: line, parent: _): return "\(path):\(line)"
+    case let .file(path, line: line): return "\(path):\(line)"
     }
+  }
+}
+
+extension CallStack: CustomStringConvertible {
+  public var description: String {
+    return callLocations.description
   }
 }

@@ -1,6 +1,6 @@
 public struct Warning {
   let issue: String
-  let location: SourceLocation
+  let location: SourceLocation?
 }
 
 let nextId = count(from: 0)
@@ -14,7 +14,7 @@ func captureWarnings(_ f: () throws -> ()) rethrows -> [Warning] {
   return recordingLists[listId]!
 }
 
-func warn(_ issue: String, _ location: SourceLocation) {
+func warn(_ issue: String, _ location: SourceLocation?) {
   for id in recordingLists.keys {
     recordingLists[id]! += [Warning(issue: issue, location: location)]
   }

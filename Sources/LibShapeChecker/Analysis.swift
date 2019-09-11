@@ -4,7 +4,7 @@ public struct FunctionSummary {
   let argExprs: [Expr?] // None only for arguments of unsupported types
   let retExpr: Expr?    // None for returns of unsupported types and when we
                         // don't know anything interesting about the returned value
-  public let constraints: [Constraint]
+  public let constraints: [RawConstraint]
 }
 
 public typealias StructDecl = [(name: String, type: Type)]
@@ -79,7 +79,7 @@ public class Analyzer {
 // MARK: - Instantiation of constraints for the call chain
 
 public func instantiate(constraintsOf name: String,
-                 inside env: Environment) -> [Constraint] {
+                        inside env: Environment) -> [Constraint] {
   let instantiator = ConstraintInstantiator(name, env)
   return instantiator.constraints
 }
@@ -97,7 +97,7 @@ class ConstraintInstantiator {
     let subst = makeSubstitution()
     let _ = apply(name,
                   to: summary.argExprs.map{ $0.map{ substitute($0, using: subst) }},
-                  at: nil)
+                  at: .top)
   }
 
   func makeSubstitution() -> (Var) -> Expr {
@@ -105,7 +105,7 @@ class ConstraintInstantiator {
     return { varMap[$0].expr }
   }
 
-  func apply(_ name: String, to args: [Expr?], at applyLoc: SourceLocation?) -> Expr? {
+  func apply(_ name: String, to args: [Expr?], at stack: CallStack) -> Expr? {
     guard let summary = environment[name] else { return nil }
 
     guard !callStack.contains(name) else { return nil }
@@ -121,21 +121,20 @@ class ConstraintInstantiator {
       //     associated with them.
       guard let formal = maybeFormal else { continue }
       guard let actual = maybeActual else { continue }
-      constraints += (substitute(formal, using: subst) ≡ actual).map{ .expr($0, .implied, applyLoc ?? .unknown) }
+      constraints += (substitute(formal, using: subst) ≡ actual).map{ .expr($0, .implied, stack) }
     }
 
     // Replace the variables in the body of the summary with fresh ones to avoid conflicts.
     for constraint in summary.constraints {
       switch constraint {
-      case let .expr(expr, origin, noParentLoc):
-        let loc = noParentLoc.withParent(applyLoc)
-        constraints.append(.expr(substitute(expr, using: subst), origin, loc))
-      case let .call(name, args, maybeResult, noParentLoc):
-        let loc = noParentLoc.withParent(applyLoc)
-        let maybeApplyResult = apply(name, to: args.map{ $0.map{substitute($0, using: subst)} }, at: loc)
+      case let .expr(expr, loc):
+        constraints.append(.expr(substitute(expr, using: subst), .asserted, .frame(loc, caller: stack)))
+      case let .call(name, args, maybeResult, loc):
+        let newStack = CallStack.frame(loc, caller: stack)
+        let maybeApplyResult = apply(name, to: args.map{ $0.map{substitute($0, using: subst)} }, at: newStack)
         if let applyResult = maybeApplyResult,
            let result = maybeResult {
-          constraints += (substitute(result, using: subst) ≡ applyResult).map{ .expr($0, .implied, loc) }
+          constraints += (substitute(result, using: subst) ≡ applyResult).map{ .expr($0, .implied, newStack) }
         }
       }
     }
@@ -153,8 +152,10 @@ func warnAboutUnresolvedAsserts(_ constraints: [Constraint]) {
 
   var seenLocations = Set<SourceLocation>()
   for constraint in constraints {
-    if case let .expr(.var(v), .asserted, location) = constraint,
+    if case let .expr(.var(v), .asserted, stack) = constraint,
        varUses[.bool(v)] == 1,
+       case let .frame(maybeLocation, caller: _) = stack,
+       let location = maybeLocation,
        !seenLocations.contains(location) {
       warn("Failed to parse the assert condition", location)
       seenLocations.insert(location)

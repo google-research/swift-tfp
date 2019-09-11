@@ -65,7 +65,7 @@ fileprivate class Interpreter {
     }
   }
 
-  var constraints: [Constraint] = []
+  var constraints: [RawConstraint] = []
   var valuation: [Register: AbstractValue] = [:]
   let freshName = count(from: 0)
   let typeEnvironment: TypeEnvironment
@@ -165,9 +165,8 @@ fileprivate class Interpreter {
 
       case let .load(_, operand):
         guard case .holePointer = valuation[operand.value] else { break }
-        let loc = getLocation(instrDef)
-        guard case .file(_, line: _, parent: _) = loc else { break }
-        updates = [.int(.hole(getLocation(instrDef)))]
+        guard let loc = getLocation(instrDef) else { break }
+        updates = [.int(.hole(loc))]
 
       // NB: Shape accessors are implemented as coroutines.
       case let .beginApply(_, appliedFnReg, _, appliedArgs, appliedFnType):
@@ -241,7 +240,7 @@ fileprivate class Interpreter {
     }
   }
 
-  func interpret(builtinFunction kind: BuiltinFunction, args: [Register], at loc: SourceLocation) -> [AbstractValue?]? {
+  func interpret(builtinFunction kind: BuiltinFunction, args: [Register], at loc: SourceLocation?) -> [AbstractValue?]? {
     func binaryOp(trailingCount: Int = 0, _ f: (IntExpr, IntExpr) -> AbstractValue) -> [AbstractValue?]? {
       let values = args.compactMap{ valuation[$0] }
       let expectedArgs = trailingCount + 2
@@ -345,7 +344,7 @@ fileprivate class Interpreter {
                                zip(argTypes, args).map{ valuation[$0.1, setDefault: freshVar($0.0)]?.expr },
                                .bool(.var(condVar)),
                                loc))
-      constraints.append(.expr(.var(condVar), .asserted, loc))
+      constraints.append(.expr(.var(condVar), loc))
       return nil
 
     case .broadcast:
@@ -373,8 +372,8 @@ fileprivate class Interpreter {
   }
 }
 
-func getLocation(_ instrDef: InstructionDef) -> SourceLocation {
-  return instrDef.sourceInfo?.loc.map{ .file($0.path, line: $0.line, parent: nil) } ?? .unknown
+func getLocation(_ instrDef: InstructionDef) -> SourceLocation? {
+  return instrDef.sourceInfo?.loc.map{ .file($0.path, line: $0.line) }
 }
 
 fileprivate func getBuiltinFunctionRef(called name: String) -> BuiltinFunction? {

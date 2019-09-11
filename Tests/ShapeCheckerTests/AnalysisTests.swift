@@ -19,6 +19,14 @@ final class AnalysisTests: XCTestCase {
                   { resolveEqualities($0, strength: .everything) } >>>
                   alphaNormalize
 
+  func eraseStacks(_ constraints: [Constraint]) -> [Constraint] {
+    return constraints.map {
+      switch $0 {
+      case let .expr(expr, origin, _): return .expr(expr, origin, .top)
+      }
+    }
+  }
+
   func testAnalysisThroughCalls() {
     let callTransposeCode = """
     @_silgen_name("f")
@@ -33,7 +41,7 @@ final class AnalysisTests: XCTestCase {
                           inside: analyzer.environment)
       let transpose = instantiate(constraintsOf: "transpose",
                                   inside: analyzer.environment)
-      XCTAssertEqual(normalize(f), normalize(transpose))
+      XCTAssertEqual(eraseStacks(normalize(f)), eraseStacks(normalize(transpose)))
 
     }
   }
@@ -143,13 +151,13 @@ final class AnalysisTests: XCTestCase {
         let analyzer = Analyzer()
         analyzer.analyze(module)
         let f = normalize(instantiate(constraintsOf: "f", inside: analyzer.environment))
-        guard case let .expr(_, _, .file(swiftPath, line: _, parent: _)) = f.first else {
+        guard case let .expr(_, _, .frame(.file(swiftPath, line: _), caller: _)) = f.first else {
           return XCTFail("Failed to get the Swift file path")
         }
-        let callLoc = SourceLocation.file(swiftPath, line: 8, parent: nil)
+        let topFrame = CallStack.frame(.file(swiftPath, line: 8), caller: .top)
         XCTAssertEqual(f, [
-          .expr(.intEq(d0, 5), .implied, callLoc),
-          .expr(.intEq(d0, 4), .asserted, .file(swiftPath, line: 3, parent: callLoc)),
+          .expr(.intEq(d0, 5), .implied, topFrame),
+          .expr(.intEq(d0, 4), .asserted, .frame(.file(swiftPath, line: 3), caller: topFrame)),
         ])
       }
   }

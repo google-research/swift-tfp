@@ -62,9 +62,7 @@ func printWarnings(_ frontendWarnings: [Warning], _ constraints: [Constraint]) {
       print(" Warning: ", terminator: "")
     }}
     print(warning.issue)
-    if case let .file(path, line: line, parent: _) = warning.location {
-      try? lineCache.print(path, line: line, leftPadding: 2)
-    }
+    lineCache.print(warning.location, leftPadding: 2)
   }
 }
 
@@ -85,9 +83,7 @@ func check(_ constraints: [Constraint]) {
       case let .only(value):
         print("  - The hole at \(location) has to be exactly \(value)")
       }
-      if case let .file(path, line: line, parent: _) = location {
-        try? lineCache.print(path, line: line, leftPadding: 2)
-      }
+      lineCache.print(location, leftPadding: 2)
     }
   case .unknown:
     print("❔ Can't solve the constraint system")
@@ -95,26 +91,27 @@ func check(_ constraints: [Constraint]) {
     if let core = maybeCore {
       print("❌ Derived a contradiction from:")
       for constraint in processCore(core) {
-        guard case let .expr(expr, origin, loc) = constraint else {
+        guard case let .expr(expr, origin, stack) = constraint else {
           fatalError("Unexpected constraint type in the unsat core!")
-        }
-        let locExplanation: String
-        switch origin {
-        case .implied: locExplanation = "Implied by"
-        case .asserted: locExplanation = "Asserted at"
         }
         Colors.withBold {
           print("  - \(expr)")
         }
         if showStacks {
-          let stack = loc.stack
-          for frame in stack[..<(stack.count - 1)] {
-            print("      Called from \(frame):")
+          let callLocations = stack.callLocations
+          for frame in callLocations[..<(callLocations.count - 1)] {
+            print("      Called from \(frame?.description ?? "<unknown>"):")
           }
         }
-        print("      \(locExplanation) \(loc):")
-        if case let .file(path, line: line, parent: _) = loc {
-          try? lineCache.print(path, line: line, leftPadding: 6)
+        switch origin {
+        case .implied: print("      Implied by ", terminator: "")
+        case .asserted: print("      Asserted at ", terminator: "")
+        }
+        switch stack {
+        case .top: print("an unknown location")
+        case let .frame(location, caller: _):
+          print(location?.description ?? "an unknown location")
+          lineCache.print(location, leftPadding: 6)
         }
       }
     } else {

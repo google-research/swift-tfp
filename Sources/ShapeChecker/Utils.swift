@@ -1,3 +1,5 @@
+import LibShapeChecker
+
 extension String {
   func leftPad(to: Int, with: Character = " ") -> String {
     let toPad = max(to - count, 0)
@@ -47,9 +49,10 @@ struct Colors {
 struct LineCache {
   var lines: [String: [String]] = [:]
 
-  mutating func print(_ path: String, line: Int, leftPadding: Int) throws {
+  mutating func print(_ location: SourceLocation?, leftPadding: Int) {
+    guard case let .file(path, line: line) = location else { return }
     if !lines.keys.contains(path) {
-      let data = try String(contentsOfFile: path, encoding: .utf8)
+      guard let data = try? String(contentsOfFile: path, encoding: .utf8) else { return }
       lines[path] = Array(data.split(separator: "\n", omittingEmptySubsequences: false)).map{ String($0) }
     }
     let padding = String(repeating: " ", count: leftPadding)

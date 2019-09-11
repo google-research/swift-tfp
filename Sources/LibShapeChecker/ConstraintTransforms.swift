@@ -50,22 +50,22 @@ func inline(_ originalConstraints: [Constraint],
   let constraints = originalConstraints.flatMap {
     (constraint: Constraint) -> [Constraint] in
     switch constraint {
-    case let .expr(.listEq(.var(v), expr), origin, loc):
+    case let .expr(.listEq(.var(v), expr), origin, stack):
       guard canInline(constraint) else { break }
       if let (lhs, rhs) = handleEquality(.list(v), .list(expr)) {
-        return (lhs ≡ rhs).map{ .expr($0, origin, loc) }
+        return (lhs ≡ rhs).map{ .expr($0, origin, stack) }
       }
       return []
-    case let .expr(.intEq(.var(v), expr), origin, loc):
+    case let .expr(.intEq(.var(v), expr), origin, stack):
       guard canInline(constraint) else { break }
       if let (lhs, rhs) = handleEquality(.int(v), .int(expr)) {
-        return (lhs ≡ rhs).map{ .expr($0, origin, loc) }
+        return (lhs ≡ rhs).map{ .expr($0, origin, stack) }
       }
       return []
-    case let .expr(.boolEq(.var(v), expr), origin, loc):
+    case let .expr(.boolEq(.var(v), expr), origin, stack):
       guard canInline(constraint) else { break }
       if let (lhs, rhs) = handleEquality(.bool(v), .bool(expr)) {
-        return (lhs ≡ rhs).map{ .expr($0, origin, loc) }
+        return (lhs ≡ rhs).map{ .expr($0, origin, stack) }
       }
       return []
     default:
@@ -132,8 +132,6 @@ public func resolveEqualities(_ constraints: [Constraint],
       default:
         return constraint
       }
-    case .call(_, _, _, _):
-      return constraint
     }
   }
 
@@ -156,9 +154,9 @@ public func inlineBoolVars(_ constraints: [Constraint]) -> [Constraint] {
 
   var exprs: [BoolVar: BoolExpr] = [:]
   for constraint in constraints {
-    if case let .expr(.boolEq(.var(v), expr), origin, loc) = constraint, exprs[v] == nil {
+    if case let .expr(.boolEq(.var(v), expr), origin, stack) = constraint, exprs[v] == nil {
       exprs[v] = expr
-      gatherBoolVars(.expr(expr, origin, loc))
+      gatherBoolVars(.expr(expr, origin, stack))
     } else if case .expr(.var(_), _, _) = constraint {
       // Do nothing. Those don't count as uses that would prevent us from inlining.
     } else {
@@ -169,8 +167,8 @@ public func inlineBoolVars(_ constraints: [Constraint]) -> [Constraint] {
   return constraints.compactMap { constraint in
     if case let .expr(.boolEq(.var(v), _), _, _) = constraint, !usedBoolVars.contains(v) {
       return nil
-    } else if case let .expr(.var(v), origin, loc) = constraint, !usedBoolVars.contains(v) {
-      return exprs[v].map{ .expr($0, origin, loc) } ?? constraint
+    } else if case let .expr(.var(v), origin, stack) = constraint, !usedBoolVars.contains(v) {
+      return exprs[v].map{ .expr($0, origin, stack) } ?? constraint
     }
     return constraint
   }
@@ -183,8 +181,7 @@ public func inlineBoolVars(_ constraints: [Constraint]) -> [Constraint] {
 // a subexpression [1, 2, 3][1] will get replaced by 2.
 public func simplify(_ constraint: Constraint) -> Constraint {
   switch constraint {
-  case let .expr(expr, origin, loc): return .expr(simplify(expr), origin, loc)
-  case let .call(name, args, result, loc): return .call(name, args.map{ $0.map(simplify) }, result.map(simplify), loc)
+  case let .expr(expr, origin, stack): return .expr(simplify(expr), origin, stack)
   }
 }
 
@@ -307,7 +304,6 @@ extension Constraint {
   var complexity: Int {
     switch self {
     case let .expr(expr, _, _): return expr.complexity
-    case .call(_, _, _, _): return 1
     }
   }
 }
