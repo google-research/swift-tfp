@@ -7,6 +7,7 @@ final class Z3Tests: XCTestCase {
   let s0 = ListExpr.var(ListVar(0))
   let s1 = ListExpr.var(ListVar(1))
   let s2 = ListExpr.var(ListVar(2))
+  let d0 = IntExpr.var(IntVar(0))
 
   func testExprTranslation() {
     let examples: [(BoolExpr, String)] = [
@@ -24,7 +25,8 @@ final class Z3Tests: XCTestCase {
       (.intLe(1, 2), "(<= 1 2)"),
     ]
     for (expr, expectedDescription) in examples {
-      let assertions = denote(expr)
+      var denotation = Z3Denotation()
+      let assertions = denotation.denote(.expr(expr, .asserted, .unknown))
       XCTAssertEqual(assertions.last?.description, expectedDescription)
     }
   }
@@ -117,12 +119,33 @@ final class Z3Tests: XCTestCase {
     ]))
   }
 
+  func testHoles() {
+    let loc1 = SourceLocation.file("<memory>", line: 10, parent: nil)
+    XCTAssertEqual(verify([
+      .expr(.intEq(d0, 4), .asserted, .unknown),
+      .expr(.intEq(.hole(loc1), d0), .asserted, .unknown),
+    ]), .sat([loc1: .only(4)]))
+    XCTAssertEqual(verify([
+      .expr(.intEq(.hole(loc1), .hole(loc1)), .asserted, .unknown),
+    ]), .sat([loc1: .anything]))
+    guard case let .sat(maybeValuation) = verify([.expr(.intGt(.hole(loc1), 4), .asserted, .unknown)]),
+               let valuation = maybeValuation,
+                   valuation.count == 1,
+          case let .examples(examples) = valuation[loc1],
+                   examples.count > 0 else {
+      return XCTFail("Expected a satisfiable valuation with examples")
+    }
+    for example in examples {
+      XCTAssertTrue(example > 4)
+    }
+  }
+
   static var allTests = [
     ("testExprTranslation", testExprTranslation),
     ("testNonNegativeShapes", testNonNegativeShapes),
     ("testLists", testLists),
     ("testBroadcast", testBroadcast),
     ("testBroadcastRank", testBroadcastRank),
+    ("testHoles", testHoles),
   ]
 }
-

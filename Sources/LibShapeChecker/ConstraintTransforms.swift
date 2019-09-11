@@ -219,6 +219,7 @@ public func simplify(_ expr: IntExpr) -> IntExpr {
 
 
   switch expr {
+  case .hole(_): return expr
   case .var(_): return expr
   case .literal(_): return expr
   case let .length(of: clist):
@@ -333,6 +334,7 @@ extension BoolExpr {
 extension IntExpr {
   var complexity: Int {
     switch self {
+    case .hole(_): return 1
     case .var(_): return 1
     case .literal(_): return 1
     // NB: We don't add one, because both .rank and indexing does not increase

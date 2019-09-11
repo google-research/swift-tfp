@@ -30,8 +30,8 @@ public enum Var: Hashable {
 }
 
 public indirect enum IntExpr: Hashable, ExpressibleByIntegerLiteral {
-  // NB: No variables on this level. All integral qualities are derived from
-  //     list expressions for now.
+  // NB: Hole is really a variable with SourceLocation used as its name.
+  case hole(SourceLocation)
   case `var`(IntVar)
   case literal(Int)
   case length(of: ListExpr)
@@ -167,6 +167,8 @@ public func substitute(_ v: BoolVar, using s: Substitution) -> BoolExpr {
 
 public func substitute(_ e: IntExpr, using s: Substitution) -> IntExpr {
   switch e {
+  case let .hole(loc):
+    return .hole(loc)
   case let .var(v):
     return substitute(v, using: s)
   case let .literal(v):
@@ -303,6 +305,8 @@ extension Var: CustomStringConvertible {
 extension IntExpr: CustomStringConvertible {
   public var description: String {
     switch self {
+    case .hole(_):
+      return "_"
     case let .var(v):
       return v.description
     case let .literal(v):

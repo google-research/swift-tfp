@@ -32,8 +32,9 @@ func count(from: Int, by: Int = 1) -> (() -> Int) {
 
 // A dictionary with an infallible subscript.
 struct DefaultDict<K : Hashable, V> {
-  var dict: [K: V] = [:]
-  var defaultConstructor: (K) -> V
+  private var dict: [K: V] = [:]
+  private var defaultConstructor: (K) -> V
+  var dictionary: [K: V] { dict }
 
   init(withDefault constructor: @escaping (K) -> V) {
     self.defaultConstructor = constructor

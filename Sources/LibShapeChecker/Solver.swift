@@ -1,5 +1,11 @@
-enum SolverResult {
-  case sat
+enum LegalHoleValues: Equatable {
+  case anything
+  case only(Int)
+  case examples([Int])
+}
+
+enum SolverResult: Equatable {
+  case sat([SourceLocation: LegalHoleValues]?)
   case unknown
   case unsat([Constraint]?)
 }
@@ -23,27 +29,25 @@ let preprocess = { resolveEqualities($0, strength: .implied) } >>>
                  { resolveEqualities($0, strength: .all(of: [.shape, .implied])) }
 
 func verify(_ constraints: [Constraint]) -> SolverResult {
+  // TODO: We don't really need to construct the models if there are no holes
   let solver = Z3Context.default.makeSolver()
   var shapeVars = Set<ListVar>()
   var trackers: [String: Constraint] = [:]
 
+  // This needs to be stateful to ensure that holes receive consistent assignment
+  // of variables in all constraints where they appear.
+  var denotation = Z3Denotation()
   for constraint in preprocess(constraints) {
-    switch constraint {
-    case let .expr(expr, _, _):
-      for assertion in denote(expr) {
-        trackers[solver.assertAndTrack(assertion)] = constraint
-      }
-      // Perform a no-op substitution that has a side effect of gathering
-      // all variables appearing in a formula.
-      let _ = substitute(expr, using: {
-        if case let .list(v) = $0 {
-          shapeVars.insert(v)
-        }
-        return nil
-      })
-    case .call(_, _, _, _):
-      break
+    for assertion in denotation.denote(constraint) {
+      trackers[solver.assertAndTrack(assertion)] = constraint
     }
+
+    // Perform a no-op substitution that has a side effect of gathering
+    // all variables appearing in a formula.
+    let _ = substitute(constraint, using: {
+      if case let .list(v) = $0 { shapeVars.insert(v) }
+      return nil
+    })
   }
   // Additionally assert that all shapes are non-negative
   let zero = Z3Context.default.literal(0)
@@ -54,7 +58,31 @@ func verify(_ constraints: [Constraint]) -> SolverResult {
 
   switch solver.check() {
   case .some(true):
-    return .sat
+    guard !denotation.holes.dictionary.isEmpty else { return .sat([:]) }
+    guard let model = solver.getModel() else { return .sat(nil) }
+    var holeValuation: [SourceLocation: LegalHoleValues] = [:]
+    for (location, v) in denotation.holes.dictionary {
+      guard let value = model.getInterpretation(of: declFor(v)) else {
+        holeValuation[location] = .anything
+        continue
+      }
+      // Try to find another value of v that satisfies the constraints.
+      solver.temporaryScope {
+        solver.assert(v != Z3Context.default.literal(value))
+        switch solver.check() {
+        case .some(true):
+          if let anotherModel = solver.getModel(),
+              let anotherValue = anotherModel.getInterpretation(of: declFor(v)) {
+            holeValuation[location] = .examples([value, anotherValue])
+          } else {
+            holeValuation[location] = .examples([value])
+          }
+        case .none: holeValuation[location] = .examples([value])
+        case .some(false): holeValuation[location] = .only(value)
+        }
+      }
+    }
+    return .sat(holeValuation)
   case .none:
     return .unknown
   case .some(false):
@@ -66,14 +94,8 @@ func verify(_ constraints: [Constraint]) -> SolverResult {
 ////////////////////////////////////////////////////////////////////////////////
 // Z3 translation
 
-fileprivate let nextIntVariable = count(from: 0) .>> String.init .>> Z3Context.default.make(intVariable:)
+fileprivate let nextIntVariable = count(from: 0) .>> { "d_tmp\($0)" } .>> Z3Context.default.make(intVariable:)
 fileprivate let nextListVariable = count(from: 0) .>> TaggedListVar.temporary
-
-func denote(_ expr: BoolExpr) -> [Z3Expr<Bool>] {
-  var denotation = Z3Denotation()
-  let result = denotation.denote(expr)
-  return denotation.assumptions + [result]
-}
 
 enum TaggedListVar: CustomStringConvertible {
   case real(ListVar)
@@ -88,27 +110,40 @@ enum TaggedListVar: CustomStringConvertible {
 }
 
 struct Z3Denotation {
-
   var assumptions: [Z3Expr<Bool>] = []
+  var holes = DefaultDict<SourceLocation, Z3Expr<Int>>{ _ in nextIntVariable() }
 
-  func denote(_ v: ListVar) -> Z3Expr<[Int]> {
+  mutating func denote(_ constraint: Constraint) -> [Z3Expr<Bool>] {
+    defer { assumptions = [] }
+    switch constraint {
+    case let .expr(expr, _, _):
+      let result = denote(expr)
+      return assumptions + [result]
+    case .call(_, _, _, _):
+      return []
+    }
+  }
+
+  private func denote(_ v: ListVar) -> Z3Expr<[Int]> {
     return Z3Context.default.make(listVariable: v.description)
   }
 
-  func denote(_ v: TaggedListVar) -> Z3Expr<[Int]> {
+  private func denote(_ v: TaggedListVar) -> Z3Expr<[Int]> {
     return Z3Context.default.make(listVariable: v.description)
   }
 
-  func denote(_ v: IntVar) -> Z3Expr<Int> {
+  private func denote(_ v: IntVar) -> Z3Expr<Int> {
     return Z3Context.default.make(intVariable: v.description)
   }
 
-  func denote(_ v: BoolVar) -> Z3Expr<Bool> {
+  private func denote(_ v: BoolVar) -> Z3Expr<Bool> {
     return Z3Context.default.make(boolVariable: v.description)
   }
 
-  mutating func denote(_ expr: IntExpr) -> Z3Expr<Int> {
+  private mutating func denote(_ expr: IntExpr) -> Z3Expr<Int> {
     switch expr {
+    case let .hole(loc):
+      return holes[loc]
     case let .var(v):
       return denote(v)
     case let .literal(value):
@@ -149,7 +184,7 @@ struct Z3Denotation {
     }
   }
 
-  mutating func denote(_ expr: BoolExpr) -> Z3Expr<Bool> {
+  private mutating func denote(_ expr: BoolExpr) -> Z3Expr<Bool> {
     switch expr {
     case let .var(v):
       return denote(v)
@@ -227,7 +262,7 @@ struct Z3Denotation {
     }
   }
 
-  mutating func broadcast(_ lhsExpr: ListExpr, _ rhsExpr: ListExpr) -> TaggedListVar {
+  private mutating func broadcast(_ lhsExpr: ListExpr, _ rhsExpr: ListExpr) -> TaggedListVar {
     // TODO: We could be smart in here and encode e.g. a broadcast with
     //       a literal without using any quantifiers.
     // TODO: Broadcasting is associative, so we could pool all the broadcasted
@@ -253,7 +288,7 @@ struct Z3Denotation {
   }
 
   // Binds the value of the list expression to a variable.
-  mutating func materialize(_ expr: ListExpr) -> TaggedListVar {
+  private mutating func materialize(_ expr: ListExpr) -> TaggedListVar {
     switch expr {
     case let .var(v):
       return .real(v)
@@ -270,15 +305,15 @@ struct Z3Denotation {
     }
   }
 
-  func rank(of v: ListVar) -> Z3Expr<Int> {
+  private func rank(of v: ListVar) -> Z3Expr<Int> {
     return Z3Context.default.make(intVariable: "\(v)_rank")
   }
 
-  func rank(of v: TaggedListVar) -> Z3Expr<Int> {
+  private func rank(of v: TaggedListVar) -> Z3Expr<Int> {
     return Z3Context.default.make(intVariable: "\(v)_rank")
   }
 
-  mutating func rank(of e: ListExpr) -> Z3Expr<Int> {
+  private mutating func rank(of e: ListExpr) -> Z3Expr<Int> {
     switch e {
     case let .broadcast(lhs, rhs):
       return rank(of: broadcast(lhs, rhs))

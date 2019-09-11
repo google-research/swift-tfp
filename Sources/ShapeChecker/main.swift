@@ -70,8 +70,25 @@ func printWarnings(_ frontendWarnings: [Warning], _ constraints: [Constraint]) {
 
 func check(_ constraints: [Constraint]) {
   switch verify(constraints) {
-  case .sat:
+  case let .sat(maybeHoles):
     print("✅ Constraints are satisfiable!")
+    guard let holes = maybeHoles else {
+      return print("  ⚠️ Failed to analyze legal hole values")
+    }
+    for (location, value) in holes {
+      switch value {
+      case .anything:
+        print(" - The hole at \(location) can take an arbitrary value")
+      case let .examples(examples):
+        let examplesDesc = examples.map{ $0.description }.joined(separator: ", ")
+        print("  - Some example values that the hole at \(location) might take are: \(examplesDesc)")
+      case let .only(value):
+        print("  - The hole at \(location) has to be exactly \(value)")
+      }
+      if case let .file(path, line: line, parent: _) = location {
+        try? lineCache.print(path, line: line, leftPadding: 2)
+      }
+    }
   case .unknown:
     print("❔ Can't solve the constraint system")
   case let .unsat(maybeCore):

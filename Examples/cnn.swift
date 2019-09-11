@@ -4,6 +4,8 @@ import TensorFlow
 // Broadcasting
 ////////////////////////////////////////////////////////////////////////////////
 
+let ____: Int = 0
+
 // NB: _silgen_name is important to get this function recognized as a builtin
 @_silgen_name("broadcast")
 func broadcast(_ ar: TensorShape, _ br: TensorShape) -> TensorShape {

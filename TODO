@@ -1,5 +1,7 @@
-* Simplification through shape indexing (when a shape is only used in indexing)
-* Shape holes
-* Support for explicit init inside structs
 * Control flow support
+* Simplification through shape indexing (when a shape is only used in indexing)
+* Support for explicit init inside structs
 * More efficient verification (e.g. start with roots and only descend if failures are found)
+* Be more correct wrt. not treating everything as shapes
+  - We shouldn't warn if we fail to recover asserts that for sure don't have anything to do with shapes
+  - We shouldn't assume that every list of ints we see has to have non-negative entries...

@@ -155,7 +155,7 @@ func warnAboutUnresolvedAsserts(_ constraints: [Constraint]) {
     if case let .expr(.var(v), .asserted, location) = constraint,
        varUses[.bool(v)] == 1,
        !seenLocations.contains(location) {
-      warn("Failed to recover an assert", location)
+      warn("Failed to parse the assert condition", location)
       seenLocations.insert(location)
     }
   }

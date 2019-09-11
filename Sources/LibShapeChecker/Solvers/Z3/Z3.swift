@@ -1,5 +1,7 @@
 import libz3
 
+struct Decl<T> {}
+
 class Z3Context {
   var ctx: Z3_context
   let intSort: Z3_sort
@@ -104,6 +106,12 @@ class Z3Solver: CustomStringConvertible {
     }
     return assumptionNames
   }
+
+  func temporaryScope(_ f: () throws -> ()) rethrows {
+    Z3_solver_push(ctx.ctx, solver)
+    defer { Z3_solver_pop(ctx.ctx, solver, 1) }
+    try f()
+  }
 }
 
 class Z3Model: CustomStringConvertible {
@@ -117,6 +125,18 @@ class Z3Model: CustomStringConvertible {
   init(_ ctx: Z3Context, _ model: Z3_model) {
     self.ctx = ctx
     self.model = model
+  }
+
+  func getInterpretation(of expr: Z3Expr<Decl<Int>>) -> Int? {
+    let decl = Z3_to_func_decl(ctx.ctx, expr.ast)
+    guard let interpretation = Z3_model_get_const_interp(ctx.ctx, model, decl) else {
+      return nil
+    }
+    var result: Int64 = 0
+    guard Z3_get_numeral_int64(ctx.ctx, interpretation, &result) else {
+      fatalError("Interpretation does not fit into an int64")
+    }
+    return Int(result)
   }
 
   deinit {
@@ -181,6 +201,10 @@ func ==(_ a: Z3Expr<Bool>, _ b: Z3Expr<Bool>) -> Z3Expr<Bool> {
   return binaryOp(a, b, Z3_mk_eq)
 }
 
+func !=(_ a: Z3Expr<Int>, _ b: Z3Expr<Int>) -> Z3Expr<Bool> {
+  return !(a == b)
+}
+
 func >(_ a: Z3Expr<Int>, _ b: Z3Expr<Int>) -> Z3Expr<Bool> {
   return binaryOp(a, b, Z3_mk_gt)
 }
@@ -231,4 +255,11 @@ func forall(_ f: (Z3Expr<Int>) -> Z3Expr<Bool>) -> Z3Expr<Bool> {
                              /*num_decls=*/1, /*sorts=*/[intSort],
                              /*decl_names=*/[Z3_mk_string_symbol(ctx, "dim")],
                              /*body=*/f(arg).ast))
+}
+
+func declFor<T>(_ v: Z3Expr<T>) -> Z3Expr<Decl<T>> {
+  // NB: Variables are represented as function applications
+  assert(Z3_get_ast_kind(v.ctx.ctx, v.ast) == Z3_ast_kind(rawValue: 1))
+  let app = Z3_to_app(v.ctx.ctx, v.ast)
+  return Z3Expr(v.ctx, Z3_get_app_decl(v.ctx.ctx, app))
 }

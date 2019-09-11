@@ -48,6 +48,7 @@ fileprivate class Interpreter {
     case bool(BoolExpr)
     case tensor(withShape: ListVar)
 
+    case holePointer
     case tuple([AbstractValue?])
     case function(_ name: String)
     case partialApplication(_ fnReg: Register, _ args: [Register], _ argTypes: [Type])
@@ -150,8 +151,23 @@ fileprivate class Interpreter {
         assert(allArgTypes.count >= args.count)
         updates = [.partialApplication(fn, args, allArgTypes.suffix(args.count))]
 
-      case let .convertEscapeToNoescape(_, _, operand, _):
+      case let .convertEscapeToNoescape(_, _, operand, _): fallthrough
+      case let .convertFunction(operand, _, _): fallthrough
+      case let .thinToThickFunction(operand, _):
         updates = [valuation[operand.value]]
+
+      case let .globalAddr(name, type):
+        // TODO: Figure out a better way to ignore the module name of the
+        //       mangled symbol.
+        guard case .addressType(.namedType("Int")) = type,
+              name.hasSuffix("4____Sivp") else { break }
+        updates = [.holePointer]
+
+      case let .load(_, operand):
+        guard case .holePointer = valuation[operand.value] else { break }
+        let loc = getLocation(instrDef)
+        guard case .file(_, line: _, parent: _) = loc else { break }
+        updates = [.int(.hole(getLocation(instrDef)))]
 
       // NB: Shape accessors are implemented as coroutines.
       case let .beginApply(_, appliedFnReg, _, appliedArgs, appliedFnType):
@@ -321,7 +337,8 @@ fileprivate class Interpreter {
         fatalError("Assert expects four arguments")
       }
       guard let (name: name, args: args, argTypes: argTypes) = resolveFunction(args[0]) else {
-        fatalError("Failed to resolve an asserted function!")
+        warn("Failed to find the asserted condition", loc)
+        return nil
       }
       let condVar = freshBoolVar()
       constraints.append(.call(name,
