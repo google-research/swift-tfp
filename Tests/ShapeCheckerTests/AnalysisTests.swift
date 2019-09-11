@@ -128,6 +128,31 @@ final class AnalysisTests: XCTestCase {
     }
   }
 
+  func testCallStacks() {
+      let code = """
+      func eq4(_ x: Int) {
+        assert(x == 4)
+      }
+
+      @_silgen_name("f")
+      func f() {
+        eq4(5)
+      }
+      """
+      withSIL(forSource: code) { module, silPath in
+        let analyzer = Analyzer()
+        analyzer.analyze(module)
+        let f = normalize(instantiate(constraintsOf: "f", inside: analyzer.environment))
+        guard case let .expr(_, _, .file(swiftPath, line: _, parent: _)) = f.first else {
+          return XCTFail("Failed to get the Swift file path")
+        }
+        let callLoc = SourceLocation.file(swiftPath, line: 8, parent: nil)
+        XCTAssertEqual(f, [
+          .expr(.intEq(d0, 5), .implied, callLoc),
+          .expr(.intEq(d0, 4), .asserted, .file(swiftPath, line: 3, parent: callLoc)),
+        ])
+      }
+  }
 
   static var allTests = [
     ("testAnalysisThroughCalls", testAnalysisThroughCalls),

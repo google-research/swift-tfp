@@ -31,8 +31,6 @@ extension XCTestCase {
     let preamble = """
     import TensorFlow
 
-    @_silgen_name("check") @inline(never) func check(_ cond: Bool) {}
-
     """
     withTemporaryFile { tempFile in
       let fullCode = preamble + code

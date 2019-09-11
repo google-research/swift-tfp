@@ -127,7 +127,8 @@ class ConstraintInstantiator {
     // Replace the variables in the body of the summary with fresh ones to avoid conflicts.
     for constraint in summary.constraints {
       switch constraint {
-      case let .expr(expr, origin, loc):
+      case let .expr(expr, origin, noParentLoc):
+        let loc = noParentLoc.withParent(applyLoc)
         constraints.append(.expr(substitute(expr, using: subst), origin, loc))
       case let .call(name, args, maybeResult, noParentLoc):
         let loc = noParentLoc.withParent(applyLoc)
