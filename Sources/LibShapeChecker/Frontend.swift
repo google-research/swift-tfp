@@ -153,7 +153,8 @@ fileprivate class Interpreter {
 
       case let .convertEscapeToNoescape(_, _, operand, _): fallthrough
       case let .convertFunction(operand, _, _): fallthrough
-      case let .thinToThickFunction(operand, _):
+      case let .thinToThickFunction(operand, _): fallthrough
+      case let .markDependence(operand, _):
         updates = [valuation[operand.value]]
 
       case let .globalAddr(name, type):
@@ -224,6 +225,11 @@ fileprivate class Interpreter {
       case let .destructureTuple(operand):
         guard case let .tuple(values) = valuation[operand.value] else { break }
         updates = values
+
+      case let .tupleExtract(operand, offset):
+        guard case let .tuple(values) = valuation[operand.value],
+              offset < values.count else { break }
+        updates = [values[offset]]
 
       default:
         break

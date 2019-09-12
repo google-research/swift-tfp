@@ -54,11 +54,20 @@ func normalizeArrayLiterals(_ instrDefs: [InstructionDef]) -> [InstructionDef] {
             let sizeArg = args.only,
             case let .int(size) = literals[sizeArg] else { return [instrDef] }
 
-      // Its only user should be a destructure_tuple instruction.
-      guard let tupleDestruct = uses[tupleResult].only,
-            case let .destructureTuple(tupleOperand) = tupleDestruct.instruction,
-            let tupleOutputs = tupleDestruct.result?.valueNames,
-            tupleOutputs.count == 2 else { return [instrDef] }
+      var tupleOutputs: [Register] = []
+      var tupleOperand: Operand!
+      let tupleUsers = uses[tupleResult]
+      if let tupleDestruct = tupleUsers.only,
+         case let .destructureTuple(tupleOperand_) = tupleDestruct.instruction {
+        tupleOutputs = tupleDestruct.result?.valueNames ?? []
+        tupleOperand = tupleOperand_
+      } else if tupleUsers.count == 2,
+                case let .tupleExtract(tupleOperand_, 0) = tupleUsers[0].instruction,
+                case     .tupleExtract(_, 1) = tupleUsers[1].instruction {
+        tupleOutputs = tupleUsers.compactMap{ $0.result?.valueNames.only }
+        tupleOperand = tupleOperand_
+      }
+      guard tupleOutputs.count == 2 else { return [instrDef] }
       let (arrayReg, basePtrReg) = (tupleOutputs[0], tupleOutputs[1])
 
       // FIXME: Handle empty literals

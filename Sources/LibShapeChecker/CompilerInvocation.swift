@@ -41,7 +41,14 @@ public func withSIL(forFile: String, _ f: (Module, URL) throws -> ()) throws {
   try withTemporaryFile { tempFile in
     let process = Process()
     process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-    process.arguments = ["swiftc", "-emit-silgen", "-Xllvm", "-sil-print-debuginfo", "-o", tempFile.path, forFile]
+    process.arguments = [
+      "swiftc", "-emit-sil", "-Onone",
+      // We disable the mandatory inlining pass to avoid inlining asserts
+      "-Xllvm", "-sil-disable-pass", "-Xllvm", "Mandatory",
+      // This flag enables printing the debug location
+      "-Xllvm", "-sil-print-debuginfo",
+      "-o", tempFile.path,
+      forFile]
     do {
       try process.run()
       process.waitUntilExit()
