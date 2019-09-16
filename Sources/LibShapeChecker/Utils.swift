@@ -53,4 +53,16 @@ struct DefaultDict<K : Hashable, V> {
   func lookup(_ key: K) -> V? {
     return dict[key]
   }
+
+  mutating func remove(_ key: K) {
+    dict[key] = nil
+  }
+}
+
+extension Array {
+  var only: Element? { count != 1 ? nil : first }
+}
+
+extension Set {
+  var only: Element? { count != 1 ? nil : first }
 }

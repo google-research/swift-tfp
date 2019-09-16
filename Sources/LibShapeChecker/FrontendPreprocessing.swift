@@ -151,10 +151,6 @@ func gatherLiterals(_ operatorDefs: [OperatorDef]) -> ([Register: ALAbstractValu
   return (valuation, usesArrayAllocation)
 }
 
-fileprivate extension Array {
-  var only: Element? { isEmpty ? nil : self[0] }
-}
-
 fileprivate extension OperatorDef {
   var onlyResult: Register? {
     guard result?.valueNames.count == 1 else { return nil }
