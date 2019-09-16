@@ -26,10 +26,10 @@ enum BuiltinFunction {
 }
 
 func abstract(_ block: Block, inside typeEnvironment: TypeEnvironment) -> FunctionSummary? {
-  guard block.instructionDefs.count > 0 else { fatalError("Empty block??") }
+  guard block.operatorDefs.count > 0 else { fatalError("Empty block??") }
   let interpreter = Interpreter(block, typeEnvironment)
   let result: Register
-  switch block.instructionDefs.last!.instruction {
+  switch block.terminatorDef.terminator {
   case let .return(operand):
     result = operand.value
   default:
@@ -98,21 +98,21 @@ fileprivate class Interpreter {
 
   init(_ block: Block, _ typeEnvironment: TypeEnvironment) {
     self.typeEnvironment = typeEnvironment
-    var instructions = block.instructionDefs.makeIterator()
+    var instructions = block.operatorDefs.makeIterator()
 
     for argument in block.arguments {
       valuation[argument.valueName] = freshVar(argument.type)
     }
 
-    while let instrDef = instructions.next() {
+    while let operatorDef = instructions.next() {
       var updates: [AbstractValue?]?
 
-      switch instrDef.instruction {
+      switch operatorDef.operator {
 
       case let .beginBorrow(operand):
         fallthrough
       case let .copyValue(operand):
-        guard instrDef.result?.valueNames.count == 1 else {
+        guard operatorDef.result?.valueNames.count == 1 else {
           fatalError("Expected a single result from an ownership instruction!")
         }
         // NB: It is important to make sure the result has the same valuation as
@@ -166,14 +166,14 @@ fileprivate class Interpreter {
 
       case let .load(_, operand):
         guard case .holePointer = valuation[operand.value] else { break }
-        guard let loc = getLocation(instrDef) else { break }
+        guard let loc = getLocation(operatorDef) else { break }
         updates = [.int(.hole(loc))]
 
       // NB: Shape accessors are implemented as coroutines.
       case let .beginApply(_, appliedFnReg, _, appliedArgs, appliedFnType):
           // Eyeballing the generated code indicates that in the cases we care about
           // begin_apply should be followed immediately by an end_apply.
-          guard case .endApply(_) = instructions.next()?.instruction else {
+          guard case .endApply(_) = instructions.next()?.operator else {
             break
           }
           fallthrough
@@ -188,10 +188,10 @@ fileprivate class Interpreter {
         let argTypes = appliedArgTypes + bundleArgTypes
 
         if let kind = getBuiltinFunctionRef(called: name) {
-          updates = interpret(builtinFunction: kind, args: args, at: getLocation(instrDef))
+          updates = interpret(builtinFunction: kind, args: args, at: getLocation(operatorDef))
           break
         }
-        guard let results = instrDef.result?.valueNames,
+        guard let results = operatorDef.result?.valueNames,
               results.count == 1 else {
           fatalError("Apply instruction with no results")
         }
@@ -199,7 +199,7 @@ fileprivate class Interpreter {
         constraints.append(.call(name,
                                   zip(argTypes, args).map{ valuation[$0.1, setDefault: freshVar($0.0)]?.expr },
                                   valuation[results[0], setDefault: freshVar(resultType)]?.expr,
-                                  getLocation(instrDef)))
+                                  getLocation(operatorDef)))
 
       case let .struct(_, operands):
         updates = [.tuple(operands.map{ valuation[$0.value] })]
@@ -236,7 +236,7 @@ fileprivate class Interpreter {
       }
 
       guard let results = updates else { continue }
-      let resultNames = (instrDef.result?.valueNames) ?? []
+      let resultNames = (operatorDef.result?.valueNames) ?? []
       guard results.count == resultNames.count else {
         fatalError("Expected a different number of returns")
       }
@@ -378,8 +378,8 @@ fileprivate class Interpreter {
   }
 }
 
-func getLocation(_ instrDef: InstructionDef) -> SourceLocation? {
-  return instrDef.sourceInfo?.loc.map{ .file($0.path, line: $0.line) }
+func getLocation(_ operatorDef: OperatorDef) -> SourceLocation? {
+  return operatorDef.sourceInfo?.loc.map{ .file($0.path, line: $0.line) }
 }
 
 fileprivate func getBuiltinFunctionRef(called name: String) -> BuiltinFunction? {

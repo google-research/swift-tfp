@@ -69,8 +69,9 @@ public class Analyzer {
   }
 
   func analyze(_ block: Block) -> FunctionSummary? {
-    let instrDefs = normalizeArrayLiterals(block.instructionDefs)
-    return abstract(Block(block.identifier, block.arguments, instrDefs), inside: typeEnvironment)
+    let operatorDefs = normalizeArrayLiterals(block.operatorDefs)
+    return abstract(Block(block.identifier, block.arguments, operatorDefs, block.terminatorDef),
+                    inside: typeEnvironment)
   }
 
 }

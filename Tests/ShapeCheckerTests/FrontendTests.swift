@@ -41,8 +41,9 @@ final class FrontendTests: XCTestCase {
         for function in module.functions {
           if function.blocks.count != 1 { continue }
           let block = function.blocks[0]
-          let instrDefs = normalizeArrayLiterals(block.instructionDefs)
-          guard let summary = abstract(Block(block.identifier, block.arguments, instrDefs), inside: [:]) else { continue }
+          let operatorDefs = normalizeArrayLiterals(block.operatorDefs)
+          guard let summary = abstract(Block(block.identifier, block.arguments, operatorDefs, block.terminatorDef),
+                                       inside: [:]) else { continue }
           if .bool(expectedExpr) == summary.retExpr {
             return
           }
