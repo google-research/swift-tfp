@@ -257,3 +257,41 @@ func substitute(inside block: inout Block,
   block.terminatorDef = TerminatorDef(replaceTerminator(block.terminatorDef.terminator),
                                       block.terminatorDef.sourceInfo)
 }
+
+// PRECONDITION: cfg is acyclic, and cfg[0] is the entry block
+// POSTCONDITION: topoSort(cfg)[0] == cfg[0]
+func topoSort(_ cfg: [Block]) -> [Block] {
+  guard let entryBlock = cfg.first else { return cfg }
+
+  let blocksByName = cfg.reduce(into: [BlockName: Block]()) {
+    $0[$1.identifier] = $1
+  }
+  var dependencies = DefaultDict<BlockName, Int>{ _ in 0 }
+  for block in cfg {
+    for succ in block.successors! {
+      dependencies[succ] += 1
+    }
+  }
+
+  // Make sure that there's only one entry block to this cfg (otherwise the
+  // algorithm below is incorrect).
+  assert(dependencies[entryBlock.identifier] == 0)
+  for block in cfg {
+    assert(block.identifier == entryBlock.identifier || dependencies[block.identifier] > 0)
+  }
+
+  var ordered: [Block] = []
+  var ready = [entryBlock]
+  while let block = ready.popLast() {
+    ordered.append(block)
+    for succ in block.successors! {
+      dependencies[succ] -= 1
+      if dependencies[succ] == 0 {
+        ready.append(blocksByName[succ]!)
+      }
+    }
+  }
+  assert(ordered.count == cfg.count)
+
+  return ordered
+}

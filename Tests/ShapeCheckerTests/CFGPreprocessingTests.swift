@@ -26,6 +26,16 @@ let ifDiamond: [Block] = [
   Block("bb3", returnInstr),
 ]
 
+let dag: [Block] = [
+  Block("bb0", .condBr("", "bb1", [], "bb2", [])),
+  Block("bb1", .condBr("", "bb3", [], "bb4", [])),
+  Block("bb2", .condBr("", "bb3", [], "bb4", [])),
+  Block("bb3", .br("bb6", [])),
+  Block("bb4", .condBr("", "bb5", [], "bb6", [])),
+  Block("bb5", .br("bb6", [])),
+  Block("bb6", returnInstr),
+]
+
 let simpleLoop: [Block] = [
   Block("bb0", .br("bb1", [])),
   Block("bb1", .condBr("", "bb2", [], "bb3", [])),
@@ -61,9 +71,13 @@ let nestedLoop: [Block] = [
   Block("bb5", returnInstr),
 ]
 
-let reducibleExamples: [[Block]] = [
+let DAGExamples: [[Block]] = [
   chain,
   ifDiamond,
+  dag,
+]
+
+let reducibleExamples: [[Block]] = DAGExamples + [
   simpleLoop,
   loopWithIf,
   loopWithTwoBackEdges,
@@ -81,6 +95,7 @@ final class CFGPreprocessingTests: XCTestCase {
   func testFindLoops() {
     XCTAssertEqual(findLoops(chain), [])
     XCTAssertEqual(findLoops(ifDiamond), [])
+    XCTAssertEqual(findLoops(dag), [])
     XCTAssertEqual(findLoops(simpleLoop), [Loop(header: "bb1", body: ["bb2"])])
     XCTAssertEqual(findLoops(loopWithIf), [Loop(header: "bb1",
                                                 body: ["bb2", "bb3", "bb4", "bb5"])])
@@ -222,6 +237,28 @@ final class CFGPreprocessingTests: XCTestCase {
     }
   }
 
+  func testTopoSort() {
+    func assertSorted(_ cfg: [Block]) {
+      let position = Dictionary<BlockName, Int>(
+        cfg.enumerated().map{ ($0.element.identifier, $0.offset) },
+        uniquingKeysWith: { _,_ in fatalError() })
+      for block in cfg {
+        for successor in block.successors! {
+          XCTAssertTrue(position[block.identifier]! < position[successor]!)
+        }
+      }
+    }
+
+    for cfg in DAGExamples {
+      assertSorted(topoSort(cfg))
+      for _ in 0..<10 {
+        let result = topoSort([cfg[0]] + cfg[1...].shuffled())
+        assertSorted(result)
+        XCTAssertTrue(result[0] == cfg[0])
+      }
+    }
+  }
+
   func clone(_ cfg: [Block]) -> [Block] {
     return cfg.map {
       Block($0.identifier, $0.arguments, $0.operatorDefs, $0.terminatorDef)
@@ -233,6 +270,7 @@ final class CFGPreprocessingTests: XCTestCase {
     ("testFindLoops", testFindLoops),
     ("testUnloopNested", testUnloopNested),
     ("testUnloopProperties", testUnloopProperties),
+    ("testTopoSort", testTopoSort),
   ]
 }
 
