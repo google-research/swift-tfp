@@ -10,11 +10,11 @@ struct DefUse {
   init?(_ operatorDefs: [OperatorDef]) {
     self.operatorDefs = operatorDefs
     for (i, operatorDef) in operatorDefs.enumerated() {
-      guard let readList = operatorDef.operator.operandNames else {
+      guard let readList = operatorDef.operator.operands else {
         warn("Failed to analyze instruction \(operatorDef.operator)", getLocation(operatorDef))
         return nil
       }
-      for register in Set(readList) {
+      for register in Set(readList.map{ $0.value }) {
         uses[register].append(i)
       }
     }
