@@ -1,12 +1,5 @@
 import SIL
 
-public struct FunctionSummary {
-  let argExprs: [Expr?] // None only for arguments of unsupported types
-  let retExpr: Expr?    // None for returns of unsupported types and when we
-                        // don't know anything interesting about the returned value
-  public let constraints: [RawConstraint]
-}
-
 public typealias StructDecl = [(name: String, type: Type)]
 
 public typealias Environment = [String: FunctionSummary]
@@ -61,17 +54,9 @@ public class Analyzer {
   }
 
   func analyze(_ function: Function) {
-    guard function.blocks.count == 1 else { return }
-    let funcWarnings = captureWarnings {
-      environment[function.name] = analyze(function.blocks[0])
+    warnings[function.name] = captureWarnings {
+      environment[function.name] = abstract(function, inside: typeEnvironment)
     }
-    warnings[function.name] = funcWarnings
-  }
-
-  func analyze(_ block: Block) -> FunctionSummary? {
-    let operatorDefs = normalizeArrayLiterals(block.operatorDefs)
-    return abstract(Block(block.identifier, block.arguments, operatorDefs, block.terminatorDef),
-                    inside: typeEnvironment)
   }
 
 }
@@ -128,8 +113,8 @@ class ConstraintInstantiator {
     // Replace the variables in the body of the summary with fresh ones to avoid conflicts.
     for constraint in summary.constraints {
       switch constraint {
-      case let .expr(expr, loc):
-        constraints.append(.expr(substitute(expr, using: subst), .asserted, .frame(loc, caller: stack)))
+      case let .expr(expr, origin, loc):
+        constraints.append(.expr(substitute(expr, using: subst), origin, .frame(loc, caller: stack)))
       case let .call(name, args, maybeResult, loc):
         let newStack = CallStack.frame(loc, caller: stack)
         let maybeApplyResult = apply(name, to: args.map{ $0.map{substitute($0, using: subst)} }, at: newStack)

@@ -162,11 +162,39 @@ final class AnalysisTests: XCTestCase {
       }
   }
 
+  func testChainedBlocks() {
+    let source =  """
+      @_silgen_name("f") func f(x: Tensor<Float>) {
+        assert(x.shape[0] == 2)
+      }
+    """
+    withSIL(forSource: source) { module, _ in
+      guard let f = module.functions.first(where: { $0.name == "f" }) else {
+        return XCTFail("Failed to find the function")
+      }
+      guard let bb0 = f.blocks.only else {
+        return XCTFail("Expected f to have exactly one block")
+      }
+      let bb1Arguments = bb0.arguments.map{ Argument($0.valueName + "__", $0.type) }
+      f.blocks.insert(
+        Block("bb1", bb1Arguments, [],
+              TerminatorDef(.br("bb0", bb1Arguments.map{ Operand($0.valueName, $0.type) }), nil)),
+        at: 0)
+      let analyzer = Analyzer()
+      analyzer.analyze(module)
+      let constraints = normalize(instantiate(constraintsOf: "f", inside: analyzer.environment))
+      XCTAssertEqual(constraints.compactMap{ $0.boolExpr }, [
+        .intEq(.element(0, of: s0), 2)
+      ])
+    }
+  }
+
   static var allTests = [
     ("testAnalysisThroughCalls", testAnalysisThroughCalls),
     ("testCustomPredicate", testCustomPredicate),
     ("testFactory", testFactory),
     ("testTuples", testTuples),
     ("testStruct", testStruct),
+    ("testChainedBlocks", testChainedBlocks),
   ]
 }

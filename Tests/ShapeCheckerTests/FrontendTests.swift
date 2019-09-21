@@ -12,9 +12,10 @@ final class FrontendTests: XCTestCase {
         }
       """
     }
-    let xVar = ListExpr.var(ListVar(0))
-    let yVar = ListExpr.var(ListVar(1))
-    let iVar = IntExpr.var(IntVar(2))
+    // NB: Variable number 0 is the result
+    let xVar = ListExpr.var(ListVar(1))
+    let yVar = ListExpr.var(ListVar(2))
+    let iVar = IntExpr.var(IntVar(3))
     let asserts: [(String, BoolExpr)] = [
       ("x.rank == 2", .intEq(.length(of: xVar), 2)),
       ("x.rank == y.rank", .intEq(.length(of: xVar), .length(of: yVar))),
@@ -40,12 +41,12 @@ final class FrontendTests: XCTestCase {
       withSIL(forSource: makeCheck(cond)) { module, _ in
         for function in module.functions {
           if function.blocks.count != 1 { continue }
-          let block = function.blocks[0]
-          let operatorDefs = normalizeArrayLiterals(block.operatorDefs)
-          guard let summary = abstract(Block(block.identifier, block.arguments, operatorDefs, block.terminatorDef),
-                                       inside: [:]) else { continue }
-          if .bool(expectedExpr) == summary.retExpr {
-            return
+          guard let summary = abstract(function, inside: [:]) else { continue }
+          guard case let .bool(.var(retVarName)) = summary.retExpr else { continue }
+          for assertedExpr in summary.constraints.compactMap({ $0.boolExpr }) {
+            if case .boolEq(.var(retVarName), expectedExpr) = assertedExpr {
+              return
+            }
           }
         }
         XCTFail("Failed to find \(expectedExpr)")

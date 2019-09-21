@@ -1,3 +1,6 @@
+// Helpful type aliases
+typealias Register = String
+
 // Function composition operator.
 // NB: To the best of my knowledge it's impossible make it fully polymorphic
 //     (e.g. in the number of arguments), so if you need more cases feel free

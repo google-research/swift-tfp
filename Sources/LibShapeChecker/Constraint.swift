@@ -105,7 +105,7 @@ public enum ConstraintOrigin: Hashable {
 }
 
 public enum RawConstraint: Hashable {
-  case expr(BoolExpr, SourceLocation?)
+  case expr(BoolExpr, ConstraintOrigin, SourceLocation?)
   // Calls could theoretically be expressed by something like
   // .resultTypeEq(result, .resultTypeCall(name, args))
   // However, there are valid Exprs (e.g. involving compound types)
@@ -242,8 +242,8 @@ public func substitute(_ e: CompoundExpr, using s: Substitution) -> CompoundExpr
 
 public func substitute(_ c: RawConstraint, using s: Substitution) -> RawConstraint {
   switch c {
-  case let .expr(expr, loc):
-    return .expr(substitute(expr, using: s), loc)
+  case let .expr(expr, origin, loc):
+    return .expr(substitute(expr, using: s), origin, loc)
   case let .call(name, args, result, loc):
     return .call(name,
                  args.map{ $0.map{ substitute($0, using: s) } },
@@ -396,7 +396,7 @@ extension CompoundExpr: CustomStringConvertible {
 extension RawConstraint: CustomStringConvertible {
   public var description: String {
     switch self {
-    case let .expr(expr, _):
+    case let .expr(expr, _, _):
       return expr.description
     case let .call(name, maybeArgs, maybeRet, _):
       let argsDesc = maybeArgs.map{ $0?.description ?? "*" }.joined(separator: ", ")

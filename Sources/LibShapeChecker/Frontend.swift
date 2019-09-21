@@ -1,8 +1,31 @@
 import SIL
 
-typealias Register = String
+public struct FunctionSummary {
+  let argExprs: [Expr?] // None only for arguments of unsupported types
+  let retExpr: Expr?    // None for returns of unsupported types and when we
+                        // don't know anything interesting about the returned value
+  public let constraints: [RawConstraint]
+}
 
-enum BuiltinFunction {
+func abstract(_ function: Function, inside typeEnvironment: TypeEnvironment) -> FunctionSummary? {
+  // It's ok to not have any blocks. Some functions emitted in the SIL file are
+  // declarations without a definition.
+  guard let initialBlock = function.blocks.first else { return nil }
+  guard let hasReducibleCFG = induceReducibleCFG(function.blocks), hasReducibleCFG else {
+    warn("Control flow inside this function was too complex to be analyzed", nil)
+    return nil
+  }
+  guard findLoops(function.blocks).isEmpty else {
+    warn("Functions containing loops are not supported", nil)
+    return nil
+  }
+  guard let interpreterState = interpret(function, typeEnvironment) else { return nil }
+  return FunctionSummary(argExprs: interpreterState.blockArguments[initialBlock.identifier]!,
+                         retExpr: interpreterState.retExpr,
+                         constraints: interpreterState.constraints)
+}
+
+fileprivate enum BuiltinFunction {
   case assert
 
   case broadcast
@@ -25,50 +48,41 @@ enum BuiltinFunction {
   case shapeEqual
 }
 
-func abstract(_ block: Block, inside typeEnvironment: TypeEnvironment) -> FunctionSummary? {
-  guard block.operatorDefs.count > 0 else { fatalError("Empty block??") }
-  let interpreter = Interpreter(block, typeEnvironment)
-  let result: Register
-  switch block.terminatorDef.terminator {
-  case let .return(operand):
-    result = operand.value
-  default:
-    return nil
-  }
-  return FunctionSummary(argExprs: block.arguments.map { interpreter.valuation[$0.valueName]?.expr },
-                         retExpr: interpreter.valuation[result]?.expr,
-                         constraints: interpreter.constraints)
-}
+fileprivate enum AbstractValue {
+  case int(IntExpr)
+  case list(ListExpr)
+  case bool(BoolExpr)
+  case tensor(withShape: ListVar)
 
-// This class is really a poor man's state monad
-fileprivate class Interpreter {
-  enum AbstractValue {
-    case int(IntExpr)
-    case list(ListExpr)
-    case bool(BoolExpr)
-    case tensor(withShape: ListVar)
+  case holePointer
+  case tuple([AbstractValue?])
+  case function(_ name: String)
+  case partialApplication(_ fnReg: Register, _ args: [Register], _ argTypes: [Type])
 
-    case holePointer
-    case tuple([AbstractValue?])
-    case function(_ name: String)
-    case partialApplication(_ fnReg: Register, _ args: [Register], _ argTypes: [Type])
-
-    var expr: Expr? {
-      switch self {
-      case let .int(expr): return .int(expr)
-      case let .list(expr): return .list(expr)
-      case let .bool(expr): return .bool(expr)
-      case let .tuple(subexprs): return .compound(.tuple(subexprs.map{ $0?.expr }))
-      case let .tensor(withShape: v): return .list(.var(v))
-      default: return nil
-      }
+  var expr: Expr? {
+    switch self {
+    case let .int(expr): return .int(expr)
+    case let .list(expr): return .list(expr)
+    case let .bool(expr): return .bool(expr)
+    case let .tuple(subexprs): return .compound(.tuple(subexprs.map{ $0?.expr }))
+    case let .tensor(withShape: v): return .list(.var(v))
+    default: return nil
     }
   }
+}
 
+// This class is really a poor man's emulation of a function that executes
+// inside a state monad
+fileprivate class interpret {
+  // Those are the results of our abstract interpretation
+  var blockArguments: [BlockName: [Expr?]] = [:]
+  var retExpr: Expr?
   var constraints: [RawConstraint] = []
-  var valuation: [Register: AbstractValue] = [:]
-  let freshName = count(from: 0)
-  let typeEnvironment: TypeEnvironment
+
+  private var valuation: [Register: AbstractValue] = [:]
+
+  private let freshName = count(from: 0)
+  private let typeEnvironment: TypeEnvironment
 
   func freshVar(_ type: Type) -> AbstractValue? {
     switch simplifyType(type) {
@@ -96,13 +110,28 @@ fileprivate class Interpreter {
     return BoolVar(freshName())
   }
 
-  init(_ block: Block, _ typeEnvironment: TypeEnvironment) {
+  init?(_ function: Function, _ typeEnvironment: TypeEnvironment) {
     self.typeEnvironment = typeEnvironment
-    var instructions = block.operatorDefs.makeIterator()
-
-    for argument in block.arguments {
-      valuation[argument.valueName] = freshVar(argument.type)
+    let (arguments: _, result: resultType) = function.type.functionSignature
+    self.retExpr = freshVar(resultType)?.expr
+    for block in function.blocks {
+      let arguments = block.arguments.map{ freshVar($0.type) }
+      blockArguments[block.identifier] = arguments.map{ $0?.expr }
+      for (argValue, arg) in zip(arguments, block.arguments) {
+        valuation[arg.valueName] = argValue
+      }
     }
+    for block in topoSort(function.blocks) {
+      let preprocessedOperators = normalizeArrayLiterals(block.operatorDefs)
+      guard interpret(Block(block.identifier, block.arguments,
+                            preprocessedOperators, block.terminatorDef)) else {
+        return nil
+      }
+    }
+  }
+
+  func interpret(_ block: Block) -> Bool {
+    var instructions = block.operatorDefs.makeIterator()
 
     while let operatorDef = instructions.next() {
       var updates: [AbstractValue?]?
@@ -244,6 +273,37 @@ fileprivate class Interpreter {
         valuation[name] = value
       }
     }
+
+    switch block.terminatorDef.terminator {
+      case let .br(label, operands):
+        jump(to: label, passing: operands, at: getLocation(block.terminatorDef))
+        return true
+      case let .return(operand):
+        equate([retExpr], [operand], at: getLocation(block.terminatorDef))
+        return true
+      // TODO: Should we simply discard all constraints that appear in this block??
+      //       I guess in this case we should also discard everything that's postdominated by it...
+      //       This should be fixed with some kind of cfg preprocessing.
+      case .unreachable: return true
+      case .condBr(_, _, _, _, _):  fallthrough
+      case .switchEnum(_, _): fallthrough
+      case .unknown(_):
+        warn("Analysis aborted due to an unsupported block terminator: \(block.terminatorDef)", nil)
+        return false
+    }
+  }
+
+  func jump(to label: String, passing arguments: [Operand], at loc: SourceLocation?) {
+    equate(blockArguments[label]!, arguments, at: loc)
+  }
+
+  func equate(_ exprs: [Expr?], _ operands: [Operand], at loc: SourceLocation?) {
+    assert(exprs.count == operands.count)
+    for (maybeExpr, operand) in zip(exprs, operands) {
+      guard let operandExpr = valuation[operand.value]?.expr,
+            let expr = maybeExpr else { continue }
+      constraints += (expr ≡ operandExpr).map{ .expr($0, .implied, loc) }
+    }
   }
 
   func interpret(builtinFunction kind: BuiltinFunction, args: [Register], at loc: SourceLocation?) -> [AbstractValue?]? {
@@ -350,7 +410,7 @@ fileprivate class Interpreter {
                                zip(argTypes, args).map{ valuation[$0.1, setDefault: freshVar($0.0)]?.expr },
                                .bool(.var(condVar)),
                                loc))
-      constraints.append(.expr(.var(condVar), loc))
+      constraints.append(.expr(.var(condVar), .asserted, loc))
       return nil
 
     case .broadcast:
@@ -379,7 +439,15 @@ fileprivate class Interpreter {
 }
 
 func getLocation(_ operatorDef: OperatorDef) -> SourceLocation? {
-  return operatorDef.sourceInfo?.loc.map{ .file($0.path, line: $0.line) }
+  return getLocation(operatorDef.sourceInfo)
+}
+
+func getLocation(_ terminatorDef: TerminatorDef) -> SourceLocation? {
+  return getLocation(terminatorDef.sourceInfo)
+}
+
+func getLocation(_ sourceInfo: SourceInfo?) -> SourceLocation? {
+  return sourceInfo?.loc.map{ .file($0.path, line: $0.line) }
 }
 
 fileprivate func getBuiltinFunctionRef(called name: String) -> BuiltinFunction? {

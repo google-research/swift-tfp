@@ -84,3 +84,10 @@ extension Constraint {
     return expr
   }
 }
+
+extension RawConstraint {
+  var boolExpr: BoolExpr? {
+    guard case let .expr(expr, _, _) = self else { return nil }
+    return expr
+  }
+}
