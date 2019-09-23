@@ -233,6 +233,10 @@ func ||(_ a: Z3Expr<Bool>, _ b: Z3Expr<Bool>) -> Z3Expr<Bool> {
   return Z3Expr(a.ctx, Z3_mk_or(a.ctx.ctx, 2, [a.ast, b.ast]))
 }
 
+func implies(_ a: Z3Expr<Bool>, _ b: Z3Expr<Bool>) -> Z3Expr<Bool> {
+  return binaryOp(a, b, Z3_mk_implies)
+}
+
 func ite<T>(_ cond: Z3Expr<Bool>, _ t: Z3Expr<T>, _ f: Z3Expr<T>) -> Z3Expr<T> {
   return Z3Expr(cond.ctx, Z3_mk_ite(cond.ctx.ctx, cond.ast, t.ast, f.ast))
 }

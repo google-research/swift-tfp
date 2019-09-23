@@ -83,7 +83,8 @@ class ConstraintInstantiator {
     let subst = makeSubstitution()
     let _ = apply(name,
                   to: summary.argExprs.map{ $0.map{ substitute($0, using: subst) }},
-                  at: .top)
+                  at: .top,
+                  assuming: .true)
   }
 
   func makeSubstitution() -> (Var) -> Expr {
@@ -91,7 +92,7 @@ class ConstraintInstantiator {
     return { varMap[$0].expr }
   }
 
-  func apply(_ name: String, to args: [Expr?], at stack: CallStack) -> Expr? {
+  func apply(_ name: String, to args: [Expr?], at stack: CallStack, assuming applyCond: BoolExpr) -> Expr? {
     guard let summary = environment[name] else { return nil }
 
     guard !callStack.contains(name) else { return nil }
@@ -107,20 +108,27 @@ class ConstraintInstantiator {
       //     associated with them.
       guard let formal = maybeFormal else { continue }
       guard let actual = maybeActual else { continue }
-      constraints += (substitute(formal, using: subst) ≡ actual).map{ .expr($0, .implied, stack) }
+      // NB: It is safe to not guard those with applyCond.
+      constraints += (substitute(formal, using: subst) ≡ actual).map{ .expr($0, assuming: .true, .implied, stack) }
     }
 
     // Replace the variables in the body of the summary with fresh ones to avoid conflicts.
     for constraint in summary.constraints {
       switch constraint {
-      case let .expr(expr, origin, loc):
-        constraints.append(.expr(substitute(expr, using: subst), origin, .frame(loc, caller: stack)))
-      case let .call(name, args, maybeResult, loc):
+      case let .expr(expr, assuming: cond, origin, loc):
+        constraints.append(.expr(substitute(expr, using: subst),
+                                 assuming: applyCond && substitute(cond, using: subst),
+                                 origin,
+                                 .frame(loc, caller: stack)))
+      case let .call(name, args, maybeResult, assuming: cond, loc):
         let newStack = CallStack.frame(loc, caller: stack)
-        let maybeApplyResult = apply(name, to: args.map{ $0.map{substitute($0, using: subst)} }, at: newStack)
+        let maybeApplyResult = apply(name, to: args.map{ $0.map{substitute($0, using: subst)} },
+                                           at: newStack,
+                                           assuming: applyCond && substitute(cond, using: subst))
         if let applyResult = maybeApplyResult,
            let result = maybeResult {
-          constraints += (substitute(result, using: subst) ≡ applyResult).map{ .expr($0, .implied, newStack) }
+          // NB: It is safe to not guard those with applyCond.
+          constraints += (substitute(result, using: subst) ≡ applyResult).map{ .expr($0, assuming: .true, .implied, newStack) }
         }
       }
     }
@@ -138,7 +146,7 @@ func warnAboutUnresolvedAsserts(_ constraints: [Constraint]) {
 
   var seenLocations = Set<SourceLocation>()
   for constraint in constraints {
-    if case let .expr(.var(v), .asserted, stack) = constraint,
+    if case let .expr(.var(v), assuming: _, .asserted, stack) = constraint,
        varUses[.bool(v)] == 1,
        case let .frame(maybeLocation, caller: _) = stack,
        let location = maybeLocation,

@@ -43,7 +43,7 @@ final class FrontendTests: XCTestCase {
           if function.blocks.count != 1 { continue }
           guard let summary = abstract(function, inside: [:]) else { continue }
           guard case let .bool(.var(retVarName)) = summary.retExpr else { continue }
-          for assertedExpr in summary.constraints.compactMap({ $0.boolExpr }) {
+          for assertedExpr in summary.constraints.compactMap({ $0.exprWithoutCond }) {
             if case .boolEq(.var(retVarName), expectedExpr) = assertedExpr {
               return
             }

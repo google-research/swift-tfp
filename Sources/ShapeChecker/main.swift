@@ -91,7 +91,7 @@ func check(_ constraints: [Constraint]) {
     if let core = maybeCore {
       print("❌ Derived a contradiction from:")
       for constraint in processCore(core) {
-        guard case let .expr(expr, origin, stack) = constraint else {
+        guard case let .expr(expr, assuming: _, origin, stack) = constraint else {
           fatalError("Unexpected constraint type in the unsat core!")
         }
         Colors.withBold {

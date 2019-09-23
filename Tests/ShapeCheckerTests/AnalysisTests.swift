@@ -22,7 +22,8 @@ final class AnalysisTests: XCTestCase {
   func eraseStacks(_ constraints: [Constraint]) -> [Constraint] {
     return constraints.map {
       switch $0 {
-      case let .expr(expr, origin, _): return .expr(expr, origin, .top)
+      case let .expr(expr, assuming: cond, origin, _):
+        return .expr(expr, assuming: cond, origin, .top)
       }
     }
   }
@@ -62,7 +63,7 @@ final class AnalysisTests: XCTestCase {
       let analyzer = Analyzer()
       analyzer.analyze(module)
       let f = instantiate(constraintsOf: "f", inside: analyzer.environment)
-      XCTAssertTrue(normalize(f).compactMap{ $0.boolExpr }.contains(
+      XCTAssertTrue(normalize(f).compactMap{ $0.exprWithoutCond }.contains(
         .intEq(.element(0, of: s0), 2)
       ))
     }
@@ -79,7 +80,7 @@ final class AnalysisTests: XCTestCase {
       let analyzer = Analyzer()
       analyzer.analyze(module)
       let f = instantiate(constraintsOf: "f", inside: analyzer.environment)
-      XCTAssertTrue(normalize(f).compactMap{ $0.boolExpr }.contains(
+      XCTAssertTrue(normalize(f).compactMap{ $0.exprWithoutCond }.contains(
         .listEq(s0, .literal([2, 3]))
       ))
     }
@@ -103,7 +104,7 @@ final class AnalysisTests: XCTestCase {
     withSIL(forSource: randnCode + code) { module, _ in
       let analyzer = Analyzer()
       analyzer.analyze(module)
-      let f = normalize(instantiate(constraintsOf: "f", inside: analyzer.environment)).compactMap{ $0.boolExpr }
+      let f = normalize(instantiate(constraintsOf: "f", inside: analyzer.environment)).compactMap{ $0.exprWithoutCond }
       XCTAssertTrue(f.contains(.intEq(d0, .element(0, of: s1))))
       XCTAssertTrue(f.contains(.intEq(d0, .element(1, of: s1))))
       XCTAssertTrue(f.contains(.intEq(d2, .element(0, of: s1))))
@@ -151,13 +152,13 @@ final class AnalysisTests: XCTestCase {
         let analyzer = Analyzer()
         analyzer.analyze(module)
         let f = normalize(instantiate(constraintsOf: "f", inside: analyzer.environment))
-        guard case let .expr(_, _, .frame(.file(swiftPath, line: _), caller: _)) = f.first else {
+        guard case let .expr(_, assuming: _, _, .frame(.file(swiftPath, line: _), caller: _)) = f.first else {
           return XCTFail("Failed to get the Swift file path")
         }
         let topFrame = CallStack.frame(.file(swiftPath, line: 8), caller: .top)
         XCTAssertEqual(f, [
-          .expr(.intEq(d0, 5), .implied, topFrame),
-          .expr(.intEq(d0, 4), .asserted, .frame(.file(swiftPath, line: 3), caller: topFrame)),
+          .expr(.intEq(d0, 5), assuming: .true, .implied, topFrame),
+          .expr(.intEq(d0, 4), assuming: .true, .asserted, .frame(.file(swiftPath, line: 3), caller: topFrame)),
         ])
       }
   }
@@ -183,10 +184,51 @@ final class AnalysisTests: XCTestCase {
       let analyzer = Analyzer()
       analyzer.analyze(module)
       let constraints = normalize(instantiate(constraintsOf: "f", inside: analyzer.environment))
-      XCTAssertEqual(constraints.compactMap{ $0.boolExpr }, [
+      XCTAssertEqual(constraints.compactMap{ $0.exprWithoutCond }, [
         .intEq(.element(0, of: s0), 2)
       ])
     }
+  }
+
+  func testInstantiateAssumptions() {
+    let d0 = IntExpr.var(IntVar(0))
+    let d1 = IntExpr.var(IntVar(1))
+    let d2 = IntExpr.var(IntVar(2))
+    let d3 = IntExpr.var(IntVar(3))
+    let d4 = IntExpr.var(IntVar(4))
+    let d5 = IntExpr.var(IntVar(5))
+    let environment = [
+      "g": FunctionSummary(argExprs: [.int(d0)],
+                           retExpr: .int(d1),
+                           constraints: [
+        .expr(.intGt(d0, 0), assuming: .true, .asserted, nil),
+        .expr(.intEq(d1, .sub(d0, 1)), assuming: .intGe(d0, 1), .asserted, nil),
+        .expr(.intEq(d1, .add(d0, 1)), assuming: .intLt(d0, 1), .asserted, nil),
+      ]),
+      "f": FunctionSummary(argExprs: [],
+                           retExpr: nil,
+                           constraints: [
+        .expr(.intEq(d0, 4), assuming: .true, .asserted, nil),
+        .expr(.intEq(d1, .add(d0, 2)), assuming: .true, .asserted, nil),
+        .expr(.intEq(d2, .add(d1, 2)), assuming: .true, .asserted, nil),
+        .call("g", [.int(d2)], .int(d3), assuming: .intEq(d1, 6), nil),
+        .expr(.intGt(d3, 0), assuming: .intEq(d1, 6), .asserted, nil),
+      ]),
+    ]
+    let constraints = instantiate(constraintsOf: "f", inside: environment)
+    let fFrame = CallStack.frame(nil, caller: .top)
+    let gFrame = CallStack.frame(nil, caller: fFrame)
+    XCTAssertEqual(constraints, [
+        .expr(.intEq(d0, 4), assuming: .true, .asserted, fFrame),
+        .expr(.intEq(d1, .add(d0, 2)), assuming: .true, .asserted, fFrame),
+        .expr(.intEq(d2, .add(d1, 2)), assuming: .true, .asserted, fFrame),
+        .expr(.intEq(d3, d2), assuming: .true, .implied, fFrame),
+        .expr(.intGt(d3, 0), assuming: .intEq(d1, 6), .asserted, gFrame),
+        .expr(.intEq(d4, .sub(d3, 1)), assuming: .and([.intEq(d1, 6), .intGe(d3, 1)]), .asserted, gFrame),
+        .expr(.intEq(d4, .add(d3, 1)), assuming: .and([.intEq(d1, 6), .intLt(d3, 1)]), .asserted, gFrame),
+        .expr(.intEq(d5, d4), assuming: .true, .implied, fFrame),
+        .expr(.intGt(d5, 0), assuming: .intEq(d1, 6), .asserted, fFrame),
+    ])
   }
 
   static var allTests = [
@@ -196,5 +238,6 @@ final class AnalysisTests: XCTestCase {
     ("testTuples", testTuples),
     ("testStruct", testStruct),
     ("testChainedBlocks", testChainedBlocks),
+    ("testInstantiateAssumptions", testInstantiateAssumptions),
   ]
 }

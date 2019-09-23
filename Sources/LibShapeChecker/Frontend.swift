@@ -228,6 +228,7 @@ fileprivate class interpret {
         constraints.append(.call(name,
                                   zip(argTypes, args).map{ valuation[$0.1, setDefault: freshVar($0.0)]?.expr },
                                   valuation[results[0], setDefault: freshVar(resultType)]?.expr,
+                                  assuming: .true,
                                   getLocation(operatorDef)))
 
       case let .struct(_, operands):
@@ -302,7 +303,7 @@ fileprivate class interpret {
     for (maybeExpr, operand) in zip(exprs, operands) {
       guard let operandExpr = valuation[operand.value]?.expr,
             let expr = maybeExpr else { continue }
-      constraints += (expr ≡ operandExpr).map{ .expr($0, .implied, loc) }
+      constraints += (expr ≡ operandExpr).map{ .expr($0, assuming: .true, .implied, loc) }
     }
   }
 
@@ -409,8 +410,9 @@ fileprivate class interpret {
       constraints.append(.call(name,
                                zip(argTypes, args).map{ valuation[$0.1, setDefault: freshVar($0.0)]?.expr },
                                .bool(.var(condVar)),
+                               assuming: .true,
                                loc))
-      constraints.append(.expr(.var(condVar), .asserted, loc))
+      constraints.append(.expr(.var(condVar), assuming: .true, .asserted, loc))
       return nil
 
     case .broadcast:

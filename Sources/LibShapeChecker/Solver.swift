@@ -12,7 +12,7 @@ enum SolverResult: Equatable {
 
 func isImpliedShapeEq(_ constraint: Constraint) -> Bool {
   switch constraint {
-  case .expr(.listEq(_, _), .implied, _): return true
+  case .expr(.listEq(_, _), assuming: _, .implied, _): return true
   default: return false
   }
 }
@@ -116,9 +116,17 @@ struct Z3Denotation {
   mutating func denote(_ constraint: Constraint) -> [Z3Expr<Bool>] {
     defer { assumptions = [] }
     switch constraint {
-    case let .expr(expr, _, _):
-      let result = denote(expr)
-      return assumptions + [result]
+    case let .expr(expr, assuming: condExpr, _, _):
+      let assertPart = denote(expr)
+      let assert = assumptions + [assertPart]
+      if condExpr != .true {
+        assumptions = []
+        let condPart = denote(condExpr)
+        let cond = assumptions.reduce(condPart, &&)
+        return assert.map{ implies(cond, $0) }
+      } else {
+        return assert
+      }
     }
   }
 
@@ -184,6 +192,8 @@ struct Z3Denotation {
 
   private mutating func denote(_ expr: BoolExpr) -> Z3Expr<Bool> {
     switch expr {
+    case .true:
+      return Z3Context.default.true
     case let .var(v):
       return denote(v)
     case let .and(subexprs):

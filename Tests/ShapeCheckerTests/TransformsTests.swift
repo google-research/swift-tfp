@@ -16,57 +16,57 @@ final class TransformsTests: XCTestCase {
 
   func testResolveEqualities() {
     XCTAssertEqual(resolveEqualities([
-      .expr(.listEq(s0, s1), .asserted, .top),
-      .expr(.listEq(s1, .literal([nil])), .asserted, .top),
-      .expr(.intGt(d1, 2), .asserted, .top),
-      .expr(.intEq(d0, d1), .asserted, .top),
+      .expr(.listEq(s0, s1), assuming: .true, .asserted, .top),
+      .expr(.listEq(s1, .literal([nil])), assuming: .true, .asserted, .top),
+      .expr(.intGt(d1, 2), assuming: .true, .asserted, .top),
+      .expr(.intEq(d0, d1), assuming: .true, .asserted, .top),
     ], strength: .everything), [
-      .expr(.listEq(s0, .literal([nil])), .asserted, .top),
-      .expr(.intGt(d0, 2), .asserted, .top),
+      .expr(.listEq(s0, .literal([nil])), assuming: .true, .asserted, .top),
+      .expr(.intGt(d0, 2), assuming: .true, .asserted, .top),
     ])
     XCTAssertEqual(resolveEqualities([
-      .expr(.listEq(s0, s1), .asserted, .top),
-      .expr(.listEq(s1, .literal([nil])), .asserted, .top),
-      .expr(.intGt(d2, 2), .asserted, .top),
-      .expr(.intEq(d0, d1), .asserted, .top),
-      .expr(.intEq(d1, d2), .implied, .top),
+      .expr(.listEq(s0, s1), assuming: .true, .asserted, .top),
+      .expr(.listEq(s1, .literal([nil])), assuming: .true, .asserted, .top),
+      .expr(.intGt(d2, 2), assuming: .true, .asserted, .top),
+      .expr(.intEq(d0, d1), assuming: .true, .asserted, .top),
+      .expr(.intEq(d1, d2), assuming: .true, .implied, .top),
     ], strength: .all(of: [.shape, .implied])), [
-      .expr(.listEq(s0, .literal([nil])), .asserted, .top),
-      .expr(.intGt(d1, 2), .asserted, .top),
-      .expr(.intEq(d0, d1), .asserted, .top),
+      .expr(.listEq(s0, .literal([nil])), assuming: .true, .asserted, .top),
+      .expr(.intGt(d1, 2), assuming: .true, .asserted, .top),
+      .expr(.intEq(d0, d1), assuming: .true, .asserted, .top),
     ])
     XCTAssertEqual(resolveEqualities([
-      .expr(.listEq(s0, s1), .asserted, .top),
-      .expr(.listEq(s1, .literal([nil])), .asserted, .top),
-      .expr(.intGt(d1, .literal(2)), .asserted, .top),
-      .expr(.intEq(d0, d1), .asserted, .top),
+      .expr(.listEq(s0, s1), assuming: .true, .asserted, .top),
+      .expr(.listEq(s1, .literal([nil])), assuming: .true, .asserted, .top),
+      .expr(.intGt(d1, .literal(2)), assuming: .true, .asserted, .top),
+      .expr(.intEq(d0, d1), assuming: .true, .asserted, .top),
     ], strength: .shape), [
-      .expr(.listEq(s0, .literal([nil])), .asserted, .top),
-      .expr(.intGt(d1, .literal(2)), .asserted, .top),
-      .expr(.intEq(d0, d1), .asserted, .top),
+      .expr(.listEq(s0, .literal([nil])), assuming: .true, .asserted, .top),
+      .expr(.intGt(d1, .literal(2)), assuming: .true, .asserted, .top),
+      .expr(.intEq(d0, d1), assuming: .true, .asserted, .top),
     ])
   }
 
   func testInlineBoolVars() {
     XCTAssertEqual(inlineBoolVars([
-      .expr(b0, .asserted, .top),
-      .expr(.boolEq(b0, .intGt(d0, .literal(2))), .asserted, .top),
+      .expr(b0, assuming: .true, .asserted, .top),
+      .expr(.boolEq(b0, .intGt(d0, .literal(2))), assuming: .true, .asserted, .top),
     ]), [
-      .expr(.intGt(d0, .literal(2)), .asserted, .top),
+      .expr(.intGt(d0, .literal(2)), assuming: .true, .asserted, .top),
     ])
     // Not perfect, but good enough for now
     XCTAssertEqual(inlineBoolVars([
-      .expr(b1, .asserted, .top),
-      .expr(.boolEq(b1, b0), .asserted, .top),
-      .expr(.boolEq(b0, .intGt(d0, .literal(4))), .asserted, .top),
+      .expr(b1, assuming: .true, .asserted, .top),
+      .expr(.boolEq(b1, b0), assuming: .true, .asserted, .top),
+      .expr(.boolEq(b0, .intGt(d0, .literal(4))), assuming: .true, .asserted, .top),
     ]), [
-      .expr(b0, .asserted, .top),
-      .expr(.boolEq(b0, .intGt(d0, .literal(4))), .asserted, .top),
+      .expr(b0, assuming: .true, .asserted, .top),
+      .expr(.boolEq(b0, .intGt(d0, .literal(4))), assuming: .true, .asserted, .top),
     ])
     let hard: [Constraint] = [
-      .expr(.boolEq(b0, b1), .asserted, .top),
-      .expr(.boolEq(b0, .intGt(d0, .literal(4))), .asserted, .top),
-      .expr(b1, .asserted, .top),
+      .expr(.boolEq(b0, b1), assuming: .true, .asserted, .top),
+      .expr(.boolEq(b0, .intGt(d0, .literal(4))), assuming: .true, .asserted, .top),
+      .expr(b1, assuming: .true, .asserted, .top),
     ]
     XCTAssertEqual(inlineBoolVars(hard), hard)
   }
@@ -90,50 +90,50 @@ final class TransformsTests: XCTestCase {
 
   func testDeduplicate() {
     XCTAssertEqual(deduplicate([
-      .expr(.intEq(.element(1, of: s0), 2), .asserted, .top),
-      .expr(.intEq(.element(0, of: s0), 4), .asserted, .top),
-      .expr(.intEq(.element(1, of: s0), 2), .asserted, .top),
-      .expr(.listEq(s0, .literal([nil, 2])), .asserted, .top),
-      .expr(.intEq(.element(1, of: s0), 2), .asserted, .top),
-      .expr(.listEq(s0, .literal([nil, 2])), .asserted, .top),
+      .expr(.intEq(.element(1, of: s0), 2), assuming: .true, .asserted, .top),
+      .expr(.intEq(.element(0, of: s0), 4), assuming: .true, .asserted, .top),
+      .expr(.intEq(.element(1, of: s0), 2), assuming: .true, .asserted, .top),
+      .expr(.listEq(s0, .literal([nil, 2])), assuming: .true, .asserted, .top),
+      .expr(.intEq(.element(1, of: s0), 2), assuming: .true, .asserted, .top),
+      .expr(.listEq(s0, .literal([nil, 2])), assuming: .true, .asserted, .top),
     ]), [
-      .expr(.intEq(.element(1, of: s0), 2), .asserted, .top),
-      .expr(.intEq(.element(0, of: s0), 4), .asserted, .top),
-      .expr(.listEq(s0, .literal([nil, 2])), .asserted, .top),
+      .expr(.intEq(.element(1, of: s0), 2), assuming: .true, .asserted, .top),
+      .expr(.intEq(.element(0, of: s0), 4), assuming: .true, .asserted, .top),
+      .expr(.listEq(s0, .literal([nil, 2])), assuming: .true, .asserted, .top),
     ])
   }
 
   func testInline() {
     // If we read the expressions in order then we cannot remove the second one
     let nonInlinable: [Constraint] = [
-      .expr(.intGt(d0, d1), .asserted, .top),
-      .expr(.intEq(d0, 2), .asserted, .top),
+      .expr(.intGt(d0, d1), assuming: .true, .asserted, .top),
+      .expr(.intEq(d0, 2), assuming: .true, .asserted, .top),
     ]
     XCTAssertEqual(inline(nonInlinable), nonInlinable)
 
     XCTAssertEqual(inline([
-      .expr(.intEq(d0, .add(d1, d2)), .asserted, .top),
-      .expr(.intEq(d0, 2), .asserted, .top),
+      .expr(.intEq(d0, .add(d1, d2)), assuming: .true, .asserted, .top),
+      .expr(.intEq(d0, 2), assuming: .true, .asserted, .top),
     ]), [
-      .expr(.intEq(.add(d1, d2), 2), .asserted, .top),
+      .expr(.intEq(.add(d1, d2), 2), assuming: .true, .asserted, .top),
     ])
 
     XCTAssertEqual(inline([
-      .expr(.intEq(d0, .add(d1, d2)), .asserted, .top),
-      .expr(.intEq(d1, .sub(d0, 2)), .asserted, .top),
-      .expr(.intEq(d0, 2), .asserted, .top),
+      .expr(.intEq(d0, .add(d1, d2)), assuming: .true, .asserted, .top),
+      .expr(.intEq(d1, .sub(d0, 2)), assuming: .true, .asserted, .top),
+      .expr(.intEq(d0, 2), assuming: .true, .asserted, .top),
     ]), [
-      .expr(.intEq(d1, .sub(.add(d1, d2), 2)), .asserted, .top),
-      .expr(.intEq(.add(d1, d2), 2), .asserted, .top),
+      .expr(.intEq(d1, .sub(.add(d1, d2), 2)), assuming: .true, .asserted, .top),
+      .expr(.intEq(.add(d1, d2), 2), assuming: .true, .asserted, .top),
     ])
 
     XCTAssertEqual(inline([
-      .expr(.intEq(d0, .add(2, 3)), .asserted, .top),
-      .expr(.intEq(d1, .mul(d0, d0)), .asserted, .top),
-      .expr(.intEq(d2, .sub(d1, 5)), .asserted, .top),
-      .expr(.intEq(.element(0, of: s0), d2), .asserted, .top)
+      .expr(.intEq(d0, .add(2, 3)), assuming: .true, .asserted, .top),
+      .expr(.intEq(d1, .mul(d0, d0)), assuming: .true, .asserted, .top),
+      .expr(.intEq(d2, .sub(d1, 5)), assuming: .true, .asserted, .top),
+      .expr(.intEq(.element(0, of: s0), d2), assuming: .true, .asserted, .top)
     ]), [
-      .expr(.intEq(.element(0, of: s0), 20), .asserted, .top),
+      .expr(.intEq(.element(0, of: s0), 20), assuming: .true, .asserted, .top),
     ])
   }
 

@@ -79,15 +79,15 @@ func assertSat(_ result: SolverResult, file: StaticString = #file, line: UInt = 
 }
 
 extension Constraint {
-  var boolExpr: BoolExpr? {
-    guard case let .expr(expr, _, _) = self else { return nil }
+  var exprWithoutCond: BoolExpr? {
+    guard case let .expr(expr, assuming: .true, _, _) = self else { return nil }
     return expr
   }
 }
 
 extension RawConstraint {
-  var boolExpr: BoolExpr? {
-    guard case let .expr(expr, _, _) = self else { return nil }
+  var exprWithoutCond: BoolExpr? {
+    guard case let .expr(expr, assuming: .true, _, _) = self else { return nil }
     return expr
   }
 }

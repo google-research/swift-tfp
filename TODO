@@ -1,4 +1,7 @@
 * Control flow support
+* Figure out how to better deal with shape equality constraints under guards
+  - Perhaps we could still resolve them if all uses of one variable are guarded under a
+    conditon that's implied by the equality guard.
 * Simplification through shape indexing (when a shape is only used in indexing)
 * Support for explicit init inside structs
 * More efficient verification (e.g. start with roots and only descend if failures are found)

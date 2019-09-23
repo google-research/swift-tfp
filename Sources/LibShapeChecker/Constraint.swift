@@ -56,6 +56,7 @@ public indirect enum ListExpr: Hashable {
 }
 
 public indirect enum BoolExpr: Hashable {
+  case `true`
   case `var`(BoolVar)
   case and([BoolExpr])
   case intEq(IntExpr, IntExpr)
@@ -105,33 +106,27 @@ public enum ConstraintOrigin: Hashable {
 }
 
 public enum RawConstraint: Hashable {
-  case expr(BoolExpr, ConstraintOrigin, SourceLocation?)
+  case expr(BoolExpr, assuming: BoolExpr, ConstraintOrigin, SourceLocation?)
   // Calls could theoretically be expressed by something like
   // .resultTypeEq(result, .resultTypeCall(name, args))
   // However, there are valid Exprs (e.g. involving compound types)
   // which are not expressible by BoolExprs and this is a way of
   // ensuring that we desugar those before validation happens.
-  case call(_ name: String, _ args: [Expr?], _ result: Expr?, SourceLocation?)
+  case call(_ name: String, _ args: [Expr?], _ result: Expr?, assuming: BoolExpr, SourceLocation?)
 }
 
 public enum Constraint: Hashable {
-  case expr(BoolExpr, ConstraintOrigin, CallStack)
-
-  var expr: BoolExpr {
-    switch self {
-    case let .expr(expr, _, _): return expr
-    }
-  }
+  case expr(BoolExpr, assuming: BoolExpr, ConstraintOrigin, CallStack)
 
   var origin: ConstraintOrigin {
     switch self {
-    case let .expr(_, origin, _): return origin
+    case let .expr(_, _, origin, _): return origin
     }
   }
 
   var stack: CallStack {
     switch self {
-    case let .expr(_, _, stack): return stack
+    case let .expr(_, _, _, stack): return stack
     }
   }
 }
@@ -212,6 +207,8 @@ public func substitute(_ e: ListExpr, using s: Substitution) -> ListExpr {
 
 public func substitute(_ e: BoolExpr, using s: Substitution) -> BoolExpr {
   switch e {
+  case .true:
+    return .true
   case let .var(v):
     return substitute(v, using: s)
   case let .and(subexprs):
@@ -242,20 +239,21 @@ public func substitute(_ e: CompoundExpr, using s: Substitution) -> CompoundExpr
 
 public func substitute(_ c: RawConstraint, using s: Substitution) -> RawConstraint {
   switch c {
-  case let .expr(expr, origin, loc):
-    return .expr(substitute(expr, using: s), origin, loc)
-  case let .call(name, args, result, loc):
+  case let .expr(expr, assuming: cond, origin, loc):
+    return .expr(substitute(expr, using: s), assuming: substitute(cond, using: s), origin, loc)
+  case let .call(name, args, result, assuming: cond, loc):
     return .call(name,
                  args.map{ $0.map{ substitute($0, using: s) } },
                  result.map{ substitute($0, using: s) },
+                 assuming: substitute(cond, using: s),
                  loc)
   }
 }
 
 public func substitute(_ c: Constraint, using s: Substitution) -> Constraint {
   switch c {
-  case let .expr(expr, origin, loc):
-    return .expr(substitute(expr, using: s), origin, loc)
+  case let .expr(expr, assuming: cond, origin, loc):
+    return .expr(substitute(expr, using: s), assuming: substitute(cond, using: s), origin, loc)
   }
 }
 
@@ -269,8 +267,9 @@ public func substitute(_ e: Expr, using s: Substitution) -> Expr {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// MARK: - Generic equality operator
+// MARK: - Operators
 
+// A generic equality operator
 infix operator ≡: ComparisonPrecedence
 
 func ≡(_ a: Expr, _ b: Expr) -> [BoolExpr] {
@@ -291,6 +290,21 @@ func ≡(_ a: Expr, _ b: Expr) -> [BoolExpr] {
       }
     }
   default: fatalError("Equating expressions of different types!")
+  }
+}
+
+// && with simplification built in
+func &&(_ a: BoolExpr, _ b: BoolExpr) -> BoolExpr {
+  switch (a, b) {
+  case (_, .true): return a
+  case (.true, _): return b
+  case let (.and(aClauses), .and(bClauses)):
+    return .and(aClauses + bClauses)
+  case let (.and(clauses), cond): fallthrough
+  case let (cond, .and(clauses)):
+    return .and(clauses + [cond])
+  default:
+    return .and([a, b])
   }
 }
 
@@ -362,6 +376,8 @@ extension ListExpr: CustomStringConvertible {
 extension BoolExpr: CustomStringConvertible {
   public var description: String {
     switch self {
+    case .true:
+      return "true"
     case let .var(v):
       return v.description
     case let .and(subexprs):
@@ -396,14 +412,26 @@ extension CompoundExpr: CustomStringConvertible {
 extension RawConstraint: CustomStringConvertible {
   public var description: String {
     switch self {
-    case let .expr(expr, _, _):
-      return expr.description
-    case let .call(name, maybeArgs, maybeRet, _):
+    case let .expr(expr, assuming: cond, _, _):
+      if case .true = cond {
+        return expr.description
+      } else {
+        return "\(cond) => \(expr)"
+      }
+    case let .call(name, maybeArgs, maybeRet, assuming: cond, _):
       let argsDesc = maybeArgs.map{ $0?.description ?? "*" }.joined(separator: ", ")
       if let ret = maybeRet {
-        return "\(ret) = \(name)(\(argsDesc))"
+        if case .true = cond {
+          return "\(ret) = \(name)(\(argsDesc))"
+        } else {
+          return "\(cond) => (\(ret) = \(name)(\(argsDesc)))"
+        }
       } else {
-        return "\(name)(\(argsDesc))"
+        if case .true = cond {
+          return "\(name)(\(argsDesc))"
+        } else {
+          return "\(cond) => \(name)(\(argsDesc))"
+        }
       }
     }
   }
@@ -412,7 +440,12 @@ extension RawConstraint: CustomStringConvertible {
 extension Constraint: CustomStringConvertible {
   public var description: String {
     switch self {
-    case let .expr(expr, _, _): return expr.description
+    case let .expr(expr, assuming: cond, _, _):
+      if case .true = cond {
+        return expr.description
+      } else {
+        return "\(cond) => \(expr)"
+      }
     }
   }
 }
