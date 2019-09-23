@@ -281,8 +281,13 @@ public func simplify(_ expr: ListExpr) -> ListExpr {
 public func simplify(_ expr: BoolExpr) -> BoolExpr {
   switch expr {
   case .true: return expr
+  case .false: return expr
   case .var(_): return expr
+  case let .not(.not(subexpr)): return simplify(subexpr)
+  case let .not(subexpr): return .not(simplify(subexpr))
+  // TODO: Collapse and/or trees and filter out true/false
   case let .and(subexprs): return .and(subexprs.map(simplify))
+  case let .or(subexprs): return .or(subexprs.map(simplify))
   case let .intEq(lhs, rhs): return .intEq(simplify(lhs), simplify(rhs))
   case let .intGt(lhs, rhs): return .intGt(simplify(lhs), simplify(rhs))
   case let .intGe(lhs, rhs): return .intGe(simplify(lhs), simplify(rhs))
@@ -317,8 +322,11 @@ extension BoolExpr {
   var complexity: Int {
     switch self {
     case .true: return 1
+    case .false: return 1
     case .var(_): return 1
-    case let .and(subexprs): return 1 + subexprs.reduce(0, { $0 + $1.complexity })
+    case let .not(subexpr): return 1 + subexpr.complexity
+    case let .and(subexprs): fallthrough
+    case let .or(subexprs): return 1 + subexprs.reduce(0, { $0 + $1.complexity })
     case let .intEq(lhs, rhs): fallthrough
     case let .intGt(lhs, rhs): fallthrough
     case let .intGe(lhs, rhs): fallthrough

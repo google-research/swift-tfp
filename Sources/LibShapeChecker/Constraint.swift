@@ -57,8 +57,11 @@ public indirect enum ListExpr: Hashable {
 
 public indirect enum BoolExpr: Hashable {
   case `true`
+  case `false`
   case `var`(BoolVar)
+  case not(BoolExpr)
   case and([BoolExpr])
+  case or([BoolExpr])
   case intEq(IntExpr, IntExpr)
   case intGt(IntExpr, IntExpr)
   case intGe(IntExpr, IntExpr)
@@ -209,10 +212,16 @@ public func substitute(_ e: BoolExpr, using s: Substitution) -> BoolExpr {
   switch e {
   case .true:
     return .true
+  case .false:
+    return .false
   case let .var(v):
     return substitute(v, using: s)
+  case let .not(subexpr):
+    return .not(substitute(subexpr, using: s))
   case let .and(subexprs):
     return .and(subexprs.map{ substitute($0, using: s) })
+  case let .or(subexprs):
+    return .or(subexprs.map{ substitute($0, using: s) })
   case let .intEq(lhs, rhs):
     return .intEq(substitute(lhs, using: s), substitute(rhs, using: s))
   case let .intGt(lhs, rhs):
@@ -308,6 +317,20 @@ func &&(_ a: BoolExpr, _ b: BoolExpr) -> BoolExpr {
   }
 }
 
+// || with simplification built in
+func ||(_ a: BoolExpr, _ b: BoolExpr) -> BoolExpr {
+  switch (a, b) {
+  case (_, .false): return a
+  case (.false, _): return b
+  case let (.or(aClauses), .or(bClauses)):
+    return .or(aClauses + bClauses)
+  case let (.or(clauses), cond): fallthrough
+  case let (cond, .and(clauses)):
+    return .or(clauses + [cond])
+  default:
+    return .or([a, b])
+  }
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 // MARK: - CustomStringConvertible instances
@@ -378,10 +401,16 @@ extension BoolExpr: CustomStringConvertible {
     switch self {
     case .true:
       return "true"
+    case .false:
+      return "false"
     case let .var(v):
       return v.description
+    case let .not(subexpr):
+      return "!(\(subexpr))"
     case let .and(subexprs):
-      return subexprs.map{ "(\($0.description))" }.joined(separator: " and ")
+      return subexprs.map{ "(\($0))" }.joined(separator: " and ")
+    case let .or(subexprs):
+      return subexprs.map{ "(\($0))" }.joined(separator: " or ")
     case let .intEq(lhs, rhs):
       return "\(lhs) = \(rhs)"
     case let .intGt(lhs, rhs):
@@ -395,7 +424,7 @@ extension BoolExpr: CustomStringConvertible {
     case let .listEq(lhs, rhs):
       return "\(lhs) = \(rhs)"
     case let .boolEq(lhs, rhs):
-      return "\(lhs) = \(rhs)"
+      return "(\(lhs)) = (\(rhs))"
     }
   }
 }

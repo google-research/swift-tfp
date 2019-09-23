@@ -108,8 +108,7 @@ class ConstraintInstantiator {
       //     associated with them.
       guard let formal = maybeFormal else { continue }
       guard let actual = maybeActual else { continue }
-      // NB: It is safe to not guard those with applyCond.
-      constraints += (substitute(formal, using: subst) ≡ actual).map{ .expr($0, assuming: .true, .implied, stack) }
+      constraints += (substitute(formal, using: subst) ≡ actual).map{ .expr($0, assuming: applyCond, .implied, stack) }
     }
 
     // Replace the variables in the body of the summary with fresh ones to avoid conflicts.
@@ -121,14 +120,14 @@ class ConstraintInstantiator {
                                  origin,
                                  .frame(loc, caller: stack)))
       case let .call(name, args, maybeResult, assuming: cond, loc):
+        let fullCond = applyCond && substitute(cond, using: subst)
         let newStack = CallStack.frame(loc, caller: stack)
         let maybeApplyResult = apply(name, to: args.map{ $0.map{substitute($0, using: subst)} },
                                            at: newStack,
-                                           assuming: applyCond && substitute(cond, using: subst))
+                                           assuming: fullCond)
         if let applyResult = maybeApplyResult,
            let result = maybeResult {
-          // NB: It is safe to not guard those with applyCond.
-          constraints += (substitute(result, using: subst) ≡ applyResult).map{ .expr($0, assuming: .true, .implied, newStack) }
+          constraints += (substitute(result, using: subst) ≡ applyResult).map{ .expr($0, assuming: fullCond, .implied, newStack) }
         }
       }
     }

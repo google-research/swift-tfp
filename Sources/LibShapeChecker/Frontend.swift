@@ -69,6 +69,13 @@ fileprivate enum AbstractValue {
     default: return nil
     }
   }
+
+  var boolExpr: BoolExpr? {
+    switch self {
+    case let .bool(expr): return expr
+    default: return nil
+    }
+  }
 }
 
 // This class is really a poor man's emulation of a function that executes
@@ -79,6 +86,7 @@ fileprivate class interpret {
   var retExpr: Expr?
   var constraints: [RawConstraint] = []
 
+  private var pathConditions = DefaultDict<BlockName, Set<BoolExpr>>{ _ in [] }
   private var valuation: [Register: AbstractValue] = [:]
 
   private let freshName = count(from: 0)
@@ -114,6 +122,7 @@ fileprivate class interpret {
     self.typeEnvironment = typeEnvironment
     let (arguments: _, result: resultType) = function.type.functionSignature
     self.retExpr = freshVar(resultType)?.expr
+
     for block in function.blocks {
       let arguments = block.arguments.map{ freshVar($0.type) }
       blockArguments[block.identifier] = arguments.map{ $0?.expr }
@@ -121,6 +130,8 @@ fileprivate class interpret {
         valuation[arg.valueName] = argValue
       }
     }
+
+    pathConditions[function.blocks[0].identifier].insert(.true)
     for block in topoSort(function.blocks) {
       let preprocessedOperators = normalizeArrayLiterals(block.operatorDefs)
       guard interpret(Block(block.identifier, block.arguments,
@@ -131,8 +142,9 @@ fileprivate class interpret {
   }
 
   func interpret(_ block: Block) -> Bool {
-    var instructions = block.operatorDefs.makeIterator()
+    let pathCondition = pathConditions[block.identifier].reduce(.false, ||)
 
+    var instructions = block.operatorDefs.makeIterator()
     while let operatorDef = instructions.next() {
       var updates: [AbstractValue?]?
 
@@ -217,7 +229,27 @@ fileprivate class interpret {
         let argTypes = appliedArgTypes + bundleArgTypes
 
         if let kind = getBuiltinFunctionRef(called: name) {
-          updates = interpret(builtinFunction: kind, args: args, at: getLocation(operatorDef))
+          let loc = getLocation(operatorDef)
+          switch kind {
+          // We handle asserts at this level because we need the path condition
+          case .assert:
+            guard args.count == 4 else {
+              fatalError("Assert expects four arguments")
+            }
+            guard let (name: name, args: args, argTypes: argTypes) = resolveFunction(args[0]) else {
+              warn("Failed to find the asserted condition", loc)
+              break
+            }
+            let condVar = freshBoolVar()
+            constraints.append(.call(name,
+                                    zip(argTypes, args).map{ valuation[$0.1, setDefault: freshVar($0.0)]?.expr },
+                                    .bool(.var(condVar)),
+                                    assuming: pathCondition,
+                                    loc))
+            constraints.append(.expr(.var(condVar), assuming: pathCondition, .asserted, loc))
+          default:
+            updates = interpret(builtinFunction: kind, args: args, at: loc)
+          }
           break
         }
         guard let results = operatorDef.result?.valueNames,
@@ -228,7 +260,7 @@ fileprivate class interpret {
         constraints.append(.call(name,
                                   zip(argTypes, args).map{ valuation[$0.1, setDefault: freshVar($0.0)]?.expr },
                                   valuation[results[0], setDefault: freshVar(resultType)]?.expr,
-                                  assuming: .true,
+                                  assuming: pathCondition,
                                   getLocation(operatorDef)))
 
       case let .struct(_, operands):
@@ -277,33 +309,52 @@ fileprivate class interpret {
 
     switch block.terminatorDef.terminator {
       case let .br(label, operands):
-        jump(to: label, passing: operands, at: getLocation(block.terminatorDef))
+        jump(to: label, assuming: pathCondition, passing: operands, at: getLocation(block.terminatorDef))
+        return true
+      case let .condBr(cond, trueLabel, trueOperands, falseLabel, falseOperands):
+        let condValue = valuation[cond]?.boolExpr! ?? .var(freshBoolVar())
+        jump(to: trueLabel, assuming: pathCondition && condValue, passing: trueOperands, at: getLocation(block.terminatorDef))
+        jump(to: falseLabel, assuming: pathCondition && .not(condValue), passing: falseOperands, at: getLocation(block.terminatorDef))
         return true
       case let .return(operand):
-        equate([retExpr], [operand], at: getLocation(block.terminatorDef))
+        equate([retExpr], [operand], assuming: pathCondition, at: getLocation(block.terminatorDef))
+        return true
+      case let .switchEnum(_, cases):
+        // We don't really know too much about enums right now, so we simply treat each branch as
+        // being independent, and don't learn anything from the condition.
+        for c in cases {
+          switch c {
+          case let .case(_, label): fallthrough
+          case let .default(label):
+            pathConditions[label].insert(pathCondition && .var(freshBoolVar()))
+          }
+        }
+        // NB: No jump, because we don't know how to unpack the enum.
         return true
       // TODO: Should we simply discard all constraints that appear in this block??
       //       I guess in this case we should also discard everything that's postdominated by it...
       //       This should be fixed with some kind of cfg preprocessing.
       case .unreachable: return true
-      case .condBr(_, _, _, _, _):  fallthrough
-      case .switchEnum(_, _): fallthrough
       case .unknown(_):
-        warn("Analysis aborted due to an unsupported block terminator: \(block.terminatorDef)", nil)
+        warn("Analysis aborted due to an unsupported block terminator: \(block.terminatorDef)",
+             getLocation(block.terminatorDef))
         return false
     }
   }
 
-  func jump(to label: String, passing arguments: [Operand], at loc: SourceLocation?) {
-    equate(blockArguments[label]!, arguments, at: loc)
+  func jump(to label: String, assuming assumption: BoolExpr, passing arguments: [Operand], at loc: SourceLocation?) {
+    pathConditions[label].insert(assumption)
+    equate(blockArguments[label]!, arguments, assuming: assumption, at: loc)
   }
 
-  func equate(_ exprs: [Expr?], _ operands: [Operand], at loc: SourceLocation?) {
+  func equate(_ exprs: [Expr?], _ operands: [Operand], assuming assumption: BoolExpr, at loc: SourceLocation?) {
     assert(exprs.count == operands.count)
     for (maybeExpr, operand) in zip(exprs, operands) {
       guard let operandExpr = valuation[operand.value]?.expr,
             let expr = maybeExpr else { continue }
-      constraints += (expr ≡ operandExpr).map{ .expr($0, assuming: .true, .implied, loc) }
+      // NB: Safe to not have any assumptions here thanks to SSA invariants.
+      //     The important part is that all uses of the arguments are properly guarded.
+      constraints += (expr ≡ operandExpr).map{ .expr($0, assuming: assumption, .implied, loc) }
     }
   }
 
@@ -399,21 +450,7 @@ fileprivate class interpret {
       return [.bool(.listEq(a, b))]
 
     case .assert:
-      guard args.count == 4 else {
-        fatalError("Assert expects four arguments")
-      }
-      guard let (name: name, args: args, argTypes: argTypes) = resolveFunction(args[0]) else {
-        warn("Failed to find the asserted condition", loc)
-        return nil
-      }
-      let condVar = freshBoolVar()
-      constraints.append(.call(name,
-                               zip(argTypes, args).map{ valuation[$0.1, setDefault: freshVar($0.0)]?.expr },
-                               .bool(.var(condVar)),
-                               assuming: .true,
-                               loc))
-      constraints.append(.expr(.var(condVar), assuming: .true, .asserted, loc))
-      return nil
+      fatalError("Asserts should be handled at the block level")
 
     case .broadcast:
       guard args.count == 2 else { return nil }

@@ -6,6 +6,12 @@ import XCTest
 final class AnalysisTests: XCTestCase {
   let s0 = ListExpr.var(ListVar(0))
   let s1 = ListExpr.var(ListVar(1))
+  let s2 = ListExpr.var(ListVar(2))
+  let s3 = ListExpr.var(ListVar(3))
+  let s4 = ListExpr.var(ListVar(4))
+  let s5 = ListExpr.var(ListVar(5))
+  let s6 = ListExpr.var(ListVar(6))
+  let s7 = ListExpr.var(ListVar(7))
   let d0 = IntExpr.var(IntVar(0))
   let d1 = IntExpr.var(IntVar(1))
   let d2 = IntExpr.var(IntVar(2))
@@ -13,6 +19,12 @@ final class AnalysisTests: XCTestCase {
   let b1 = BoolExpr.var(BoolVar(1))
   let b2 = BoolExpr.var(BoolVar(2))
   let b3 = BoolExpr.var(BoolVar(3))
+  let b4 = BoolExpr.var(BoolVar(4))
+  let b5 = BoolExpr.var(BoolVar(5))
+  let b6 = BoolExpr.var(BoolVar(6))
+  let b7 = BoolExpr.var(BoolVar(7))
+  let b8 = BoolExpr.var(BoolVar(8))
+  let b9 = BoolExpr.var(BoolVar(9))
 
   let normalize = { resolveEqualities($0, strength: .everything) } >>>
                   inlineBoolVars >>>
@@ -138,29 +150,29 @@ final class AnalysisTests: XCTestCase {
   }
 
   func testCallStacks() {
-      let code = """
-      func eq4(_ x: Int) {
-        assert(x == 4)
-      }
+    let code = """
+    func eq4(_ x: Int) {
+      assert(x == 4)
+    }
 
-      @_silgen_name("f")
-      func f() {
-        eq4(5)
+    @_silgen_name("f")
+    func f() {
+      eq4(5)
+    }
+    """
+    withSIL(forSource: code) { module, silPath in
+      let analyzer = Analyzer()
+      analyzer.analyze(module)
+      let f = normalize(instantiate(constraintsOf: "f", inside: analyzer.environment))
+      guard case let .expr(_, assuming: _, _, .frame(.file(swiftPath, line: _), caller: _)) = f.first else {
+        return XCTFail("Failed to get the Swift file path")
       }
-      """
-      withSIL(forSource: code) { module, silPath in
-        let analyzer = Analyzer()
-        analyzer.analyze(module)
-        let f = normalize(instantiate(constraintsOf: "f", inside: analyzer.environment))
-        guard case let .expr(_, assuming: _, _, .frame(.file(swiftPath, line: _), caller: _)) = f.first else {
-          return XCTFail("Failed to get the Swift file path")
-        }
-        let topFrame = CallStack.frame(.file(swiftPath, line: 8), caller: .top)
-        XCTAssertEqual(f, [
-          .expr(.intEq(d0, 5), assuming: .true, .implied, topFrame),
-          .expr(.intEq(d0, 4), assuming: .true, .asserted, .frame(.file(swiftPath, line: 3), caller: topFrame)),
-        ])
-      }
+      let topFrame = CallStack.frame(.file(swiftPath, line: 8), caller: .top)
+      XCTAssertEqual(f, [
+        .expr(.intEq(d0, 5), assuming: .true, .implied, topFrame),
+        .expr(.intEq(d0, 4), assuming: .true, .asserted, .frame(.file(swiftPath, line: 3), caller: topFrame)),
+      ])
+    }
   }
 
   func testChainedBlocks() {
@@ -222,13 +234,48 @@ final class AnalysisTests: XCTestCase {
         .expr(.intEq(d0, 4), assuming: .true, .asserted, fFrame),
         .expr(.intEq(d1, .add(d0, 2)), assuming: .true, .asserted, fFrame),
         .expr(.intEq(d2, .add(d1, 2)), assuming: .true, .asserted, fFrame),
-        .expr(.intEq(d3, d2), assuming: .true, .implied, fFrame),
+        .expr(.intEq(d3, d2), assuming: .intEq(d1, 6), .implied, fFrame),
         .expr(.intGt(d3, 0), assuming: .intEq(d1, 6), .asserted, gFrame),
         .expr(.intEq(d4, .sub(d3, 1)), assuming: .and([.intEq(d1, 6), .intGe(d3, 1)]), .asserted, gFrame),
         .expr(.intEq(d4, .add(d3, 1)), assuming: .and([.intEq(d1, 6), .intLt(d3, 1)]), .asserted, gFrame),
-        .expr(.intEq(d5, d4), assuming: .true, .implied, fFrame),
+        .expr(.intEq(d5, d4), assuming: .intEq(d1, 6), .implied, fFrame),
         .expr(.intGt(d5, 0), assuming: .intEq(d1, 6), .asserted, fFrame),
     ])
+  }
+
+  func testIf() {
+    let code = """
+    @_silgen_name("f")
+    func f(_ x: Tensor<Float>) {
+      if x.shape[0] == 2 {
+        assert(x.shape[1] == 3)
+      } else {
+        assert(x.shape[0] == 4)
+        assert(x.shape[1] == 8)
+      }
+    }
+    """
+    withSIL(forSource: code) { module, _ in
+      let analyzer = Analyzer()
+      analyzer.analyze(module)
+      let f = normalize(instantiate(constraintsOf: "f", inside: analyzer.environment)).map{ $0.unpackExprs }
+      let yes = BoolExpr.intEq(.element(0, of: s1), 2)
+      let no = BoolExpr.not(yes)
+      XCTAssertEqual(f, [
+        (.listEq(s0, s1), assuming: yes),
+        (.boolEq(b2, .intEq(.element(1, of: s0), 3)), assuming: yes),
+        (.boolEq(b3, b2), assuming: yes),
+        (b3, assuming: yes),
+        (.listEq(s4, s1), assuming: no),
+        (.boolEq(b5, .intEq(.element(0, of: s4), 4)), assuming: no),
+        (.boolEq(b6, b5), assuming: no),
+        (b6, assuming: no),
+        (.listEq(s7, s1), assuming: no),
+        (.boolEq(b8, .intEq(.element(1, of: s7), 8)), assuming: no),
+        (.boolEq(b9, b8), assuming: no),
+        (b9, assuming: no),
+      ].map{ ExprAndAssumption($0.0, assuming: $0.assuming) })
+    }
   }
 
   static var allTests = [
@@ -239,5 +286,6 @@ final class AnalysisTests: XCTestCase {
     ("testStruct", testStruct),
     ("testChainedBlocks", testChainedBlocks),
     ("testInstantiateAssumptions", testInstantiateAssumptions),
+    ("testIf", testIf),
   ]
 }

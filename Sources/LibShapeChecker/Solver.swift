@@ -110,6 +110,14 @@ enum TaggedListVar: CustomStringConvertible {
 }
 
 struct Z3Denotation {
+  // All denote(...) calls have to produce a well typed Z3Expr, but because
+  // the Z3 language is relatively limited we also have to e.g. desugar some
+  // expressions and allocate intermediate variables which have some constraints
+  // applied to the (e.g. list literals like [2, 3] might get encoded as a function
+  // variable in Z3). The way to think about it is that all assumptions have to be
+  // satisfied for the result of denote(...) to be well formed.
+  // Note that You don't ever need to e.g. negate them! If they fail then it means
+  // that the negated subexpression is not well formed already!
   var assumptions: [Z3Expr<Bool>] = []
   var holes = DefaultDict<SourceLocation, Z3Expr<Int>>{ _ in nextIntVariable() }
 
@@ -194,10 +202,16 @@ struct Z3Denotation {
     switch expr {
     case .true:
       return Z3Context.default.true
+    case .false:
+      return Z3Context.default.false
     case let .var(v):
       return denote(v)
+    case let .not(subexpr):
+      return !denote(subexpr)
     case let .and(subexprs):
       return subexprs.map{ denote($0) }.reduce(&&)
+    case let .or(subexprs):
+      return subexprs.map{ denote($0) }.reduce(||)
     case let .intEq(lhs, rhs):
       return denote(lhs) == denote(rhs)
     case let .intGt(lhs, rhs):
@@ -250,20 +264,21 @@ struct Z3Denotation {
         case let .var(exprVar):
           return denoteVarVarEq(v, .real(exprVar))
         case let .literal(exprs):
+          var assertions: [Z3Expr<Bool>] = []
           for (i, maybeDimExpr) in exprs.enumerated() {
             guard let dimExpr = maybeDimExpr else { continue }
-            assumptions.append(denote(v).call(Z3Context.default.literal(exprs.count - i - 1)) == denote(dimExpr))
+            assertions.append(denote(v).call(Z3Context.default.literal(exprs.count - i - 1)) == denote(dimExpr))
           }
-          assumptions.append(rank(of: v) == Z3Context.default.literal(exprs.count))
-          return Z3Context.default.true
+          let rankEquality = rank(of: v) == Z3Context.default.literal(exprs.count)
+          return assertions.reduce(rankEquality, &&)
         case let .broadcast(lhs, rhs):
           return denoteVarVarEq(v, broadcast(lhs, rhs))
         }
       }
 
       func denoteVarVarEq(_ lhs: TaggedListVar, _ rhs: TaggedListVar) -> Z3Expr<Bool> {
-        assumptions.append(rank(of: lhs) == rank(of: rhs))
-        return forall { denote(lhs).call($0) == denote(rhs).call($0) }
+        return forall { denote(lhs).call($0) == denote(rhs).call($0) } &&
+               rank(of: lhs) == rank(of: rhs)
       }
 
       return denoteListListEq(lhs, rhs)

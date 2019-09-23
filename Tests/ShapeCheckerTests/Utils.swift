@@ -91,3 +91,21 @@ extension RawConstraint {
     return expr
   }
 }
+
+struct ExprAndAssumption: Equatable {
+  var expr: BoolExpr
+  var assuming: BoolExpr
+
+  init(_ expr: BoolExpr, assuming: BoolExpr) {
+    self.expr = expr
+    self.assuming = assuming
+  }
+}
+
+extension Constraint {
+  var unpackExprs: ExprAndAssumption {
+    switch self {
+    case let .expr(expr, assuming: cond, _, _): return ExprAndAssumption(expr, assuming: cond)
+    }
+  }
+}

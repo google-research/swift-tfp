@@ -2,6 +2,9 @@
 import SIL
 import SPMUtility
 
+// TODO: Would it be safe to strip all the assumptions in the core?
+//       If the cores are guaranteed to be _minimal_ then I think so,
+//       but otherwise no.
 let processCore = deduplicate >>> { inline($0) } >>> alphaNormalize
 var lineCache = LineCache()
 

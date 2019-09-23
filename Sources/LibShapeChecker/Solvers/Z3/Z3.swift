@@ -7,6 +7,7 @@ class Z3Context {
   let intSort: Z3_sort
   let boolSort: Z3_sort
   lazy var `true`: Z3Expr<Bool> = Z3Expr(self, Z3_mk_true(ctx))
+  lazy var `false`: Z3Expr<Bool> = Z3Expr(self, Z3_mk_false(ctx))
 
   init() {
     var config: Z3_config = Z3_mk_config()
