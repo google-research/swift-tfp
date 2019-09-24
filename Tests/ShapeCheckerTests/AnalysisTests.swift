@@ -12,9 +12,18 @@ final class AnalysisTests: XCTestCase {
   let s5 = ListExpr.var(ListVar(5))
   let s6 = ListExpr.var(ListVar(6))
   let s7 = ListExpr.var(ListVar(7))
+  let s8 = ListExpr.var(ListVar(8))
+  let s9 = ListExpr.var(ListVar(9))
   let d0 = IntExpr.var(IntVar(0))
   let d1 = IntExpr.var(IntVar(1))
   let d2 = IntExpr.var(IntVar(2))
+  let d3 = IntExpr.var(IntVar(3))
+  let d4 = IntExpr.var(IntVar(4))
+  let d5 = IntExpr.var(IntVar(5))
+  let d6 = IntExpr.var(IntVar(6))
+  let d7 = IntExpr.var(IntVar(7))
+  let d8 = IntExpr.var(IntVar(8))
+  let d9 = IntExpr.var(IntVar(9))
   let b0 = BoolExpr.var(BoolVar(0))
   let b1 = BoolExpr.var(BoolVar(1))
   let b2 = BoolExpr.var(BoolVar(2))
@@ -25,6 +34,10 @@ final class AnalysisTests: XCTestCase {
   let b7 = BoolExpr.var(BoolVar(7))
   let b8 = BoolExpr.var(BoolVar(8))
   let b9 = BoolExpr.var(BoolVar(9))
+
+  func s(_ i: Int) -> ListExpr { return .var(ListVar(i)) }
+  func d(_ i: Int) -> IntExpr { return .var(IntVar(i)) }
+  func b(_ i: Int) -> BoolExpr { return .var(BoolVar(i)) }
 
   let normalize = { resolveEqualities($0, strength: .everything) } >>>
                   inlineBoolVars >>>
@@ -274,6 +287,51 @@ final class AnalysisTests: XCTestCase {
         (.boolEq(b8, .intEq(.element(1, of: s7), 8)), assuming: no),
         (.boolEq(b9, b8), assuming: no),
         (b9, assuming: no),
+      ].map{ ExprAndAssumption($0.0, assuming: $0.assuming) })
+    }
+  }
+
+  func testLoop() {
+    let code = """
+    @_silgen_name("f")
+    func f(_ x: Tensor<Float>) {
+      assert(x.shape[1] == 3)
+      for _ in 0..<4 {
+        assert(x.shape[1] == 4)
+      }
+      assert(x.shape[0] == 2)
+    }
+    """
+    withSIL(forSource: code) { module, _ in
+      let analyzer = Analyzer()
+      analyzer.analyze(module)
+      let f = normalize(instantiate(constraintsOf: "f", inside: analyzer.environment)).map{ $0.unpackExprs }
+      let loopTaken = BoolExpr.intEq(d2, 0)
+      let loopSkipped = BoolExpr.not(.intEq(d2, 0))
+      let loopBridge = BoolExpr.and([.intEq(d2, 0), .intEq(d9, 0)])
+      let loopComplete = BoolExpr.and([.intEq(d2, 0), .intEq(d9, 0), .not(.intEq(d(15), 0))])
+      XCTAssertEqual(f, [
+        (.intEq(.element(1, of: s0), 3), assuming: .true),
+        (.listEq(s1, s0), assuming: loopTaken),
+        (.listEq(s3, s0), assuming: loopSkipped),
+        (.listEq(s4, s1), assuming: loopTaken),
+        (.boolEq(b5, .intEq(.element(1, of: s4), 4)), assuming: loopTaken),
+        (.boolEq(b6, b5), assuming: loopTaken),
+        (b6, assuming: loopTaken),
+        (.listEq(s7, s1), assuming: loopTaken),
+        (.listEq(s8, s7), assuming: loopBridge),
+        (.listEq(s(10), s8), assuming: loopBridge),
+        (.boolEq(b(11), .intEq(.element(1, of: s(10)), 4)), assuming: loopBridge),
+        (.boolEq(b(12), b(11)), assuming: loopBridge),
+        (b(12), assuming: loopBridge),
+        (.listEq(s(13), s8), assuming: loopBridge),
+        (.listEq(s(14), s(13)), assuming: loopComplete),
+        (.listEq(s(16), s(14)), assuming: loopComplete),
+        (.listEq(s(16), s3), assuming: loopSkipped),
+        (.listEq(s(17), s(16)), assuming: .or([loopSkipped, loopComplete])),
+        (.boolEq(b(18), .intEq(.element(0, of: s(17)), 2)), assuming: .or([loopSkipped, loopComplete])),
+        (.boolEq(b(19), b(18)), assuming: .or([loopSkipped, loopComplete])),
+        (b(19), assuming: .or([loopSkipped, loopComplete])),
       ].map{ ExprAndAssumption($0.0, assuming: $0.assuming) })
     }
   }

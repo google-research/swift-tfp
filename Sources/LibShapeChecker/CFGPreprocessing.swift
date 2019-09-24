@@ -145,17 +145,20 @@ func findLoops(_ blocks: [Block]) -> [Loop] {
 }
 
 // PRECONDITION: induceReducibleCFG(blocks)
-func unloop(_ blocks: inout [Block]) {
+func unloop(_ blocks: [Block]) -> [Block] {
   // TODO: Make this function more hygenic. It's fine if we assume that
   //       blocks follow the bbX convention and values are always %X, but
   //       this is not robust enough for the general case. I guess we could
   //       just alpha-normalize the inputs.
   let freshSuffix = count(from: 0) .>> String.init
 
-  guard relaxedUnloop(&blocks, suffixGenerator: freshSuffix) else { return }
+  guard var relaxedBlocks = relaxedUnloop(blocks, suffixGenerator: freshSuffix)
+        else { return blocks }
+
+  desugarSwitchTerminators(&relaxedBlocks, suffixGenerator: freshSuffix)
 
   // The CFG is now acyclic, so we can sort it.
-  blocks = topoSort(blocks)
+  let sortedRelaxedBlocks = topoSort(relaxedBlocks)
 
   // The transformation we've applied unfortunately breaks some of the
   // assumptions SSA makes, because the blocks have been duplicated with
@@ -171,7 +174,7 @@ func unloop(_ blocks: inout [Block]) {
   // the block we deal with issue 2. In particular the CFG will never use the fact
   // that registers defined in some blocks are visible in all their dominatees.
   var missingValues = DefaultDict<BlockName, [Operand]>{ _ in [] }
-  for var block in blocks.reversed() {
+  for var block in sortedRelaxedBlocks.reversed() {
     let blockName = block.identifier
     var missingLocally: [Register: Type] = [:]
     var definedRegisters = Set<Register>()
@@ -193,7 +196,7 @@ func unloop(_ blocks: inout [Block]) {
     }
 
     // Fix up the calls to successors to include the arguments they were missing
-    replace(inside: &block, jumps: { successor, _, arguments in
+    replace(inside: &block, jumps: { successor, arguments in
       return (successor, arguments + missingValues[successor])
     })
     // Finally, check which registers are read by the terminator, but have not
@@ -213,7 +216,7 @@ func unloop(_ blocks: inout [Block]) {
   // Finally, we solve issue 1. by renaming all variables in the cloned blocks.
   // Note that this renaming code is valid only because each block only refers
   // to values that were defined inside it.
-  blocks = blocks.map {
+  return sortedRelaxedBlocks.map {
     var replacements = DefaultDict<Register, Register>{ orig in "\(orig)_\(freshSuffix())" }
     return $0.alphaConverted(using: { replacements[$0] })
   }
@@ -221,11 +224,15 @@ func unloop(_ blocks: inout [Block]) {
 
 // NB: It's relaxed becase the modifications to blocks do not produce a valid
 //     SSA control-flow grpah. This is why consumers should use unloop instead.
-func relaxedUnloop(_ blocks: inout [Block],
-                   suffixGenerator freshSuffix: () -> String = count(from: 0) .>> String.init) -> Bool {
-  var loops = findLoops(blocks)
-  guard !loops.isEmpty else { return false }
+func relaxedUnloop(_ originalBlocks: [Block],
+                   suffixGenerator freshSuffix: () -> String = count(from: 0) .>> String.init) -> [Block]? {
+  var loops = findLoops(originalBlocks)
+  guard !loops.isEmpty else { return nil }
 
+  // We clone the blocks, because we'll be modifying them later
+  var blocks = originalBlocks.map {
+    Block($0.identifier, $0.arguments, $0.operatorDefs, $0.terminatorDef)
+  }
   var blocksByName = blocks.reduce(into: [BlockName: Block]()) {
     $0[$1.identifier] = $1
   }
@@ -263,7 +270,7 @@ func relaxedUnloop(_ blocks: inout [Block],
     bridgeHeader.operatorDefs.insert(
       contentsOf: bridgeHeader.arguments.map{
         OperatorDef(Result([$0.valueName]),
-                    .builtin("anyInhabitant", [], $0.type),
+                    .builtin("any_inhabitant", [], $0.type),
                     nil) },
       at: 0)
     bridgeHeader.arguments = bridgeHeader.arguments.map{ Argument("%unused_" + freshSuffix(), $0.type) }
@@ -312,37 +319,30 @@ func relaxedUnloop(_ blocks: inout [Block],
     }
   }
 
-  return true
+  return blocks
 }
 
-enum ImplicitArgument {
-  case none
-  case switchedEnum
-}
-
-// TODO: Adding extra arguments to edges outgoing form a switchEnum instruction
-//       requires adding a temporary block which will get the unpacked argument
 func replace(inside block: inout Block,
-             jumps jumpSub: (BlockName, ImplicitArgument, [Operand]) -> (BlockName, [Operand])) {
+             jumps jumpSub: (BlockName, [Operand]) -> (BlockName, [Operand])) {
   func replaceTerminator(_ terminator: Terminator) -> Terminator {
     switch terminator {
       case let .br(label, args):
-        let (newLabel, newArgs) = jumpSub(label, .none, args)
+        let (newLabel, newArgs) = jumpSub(label, args)
         return .br(newLabel, newArgs)
       case let .condBr(cond, trueLabel, trueArgs, falseLabel, falseArgs):
-        let (newTrueLabel, newTrueArgs) = jumpSub(trueLabel, .none, trueArgs)
-        let (newFalseLabel, newFalseArgs) = jumpSub(falseLabel, .none, falseArgs)
+        let (newTrueLabel, newTrueArgs) = jumpSub(trueLabel, trueArgs)
+        let (newFalseLabel, newFalseArgs) = jumpSub(falseLabel, falseArgs)
         return .condBr(cond, newTrueLabel, newTrueArgs, newFalseLabel, newFalseArgs)
       case let .switchEnum(operand, cases):
         return .switchEnum(operand, cases.map {
           switch $0 {
           case let .case(declRef, label):
-            let (newLabel, extraArgs) = jumpSub(label, .switchedEnum, [])
-            guard extraArgs.isEmpty else { fatalError("NYI: Replacement requires insertion of a trampoline block!") }
+            let (newLabel, extraArgs) = jumpSub(label, [])
+            guard extraArgs.isEmpty else { fatalError("Cannot add extra arguments to the switch_enum instruction") }
             return .case(declRef, newLabel)
           case let .default(label):
-            let (newLabel, extraArgs) = jumpSub(label, .switchedEnum, [])
-            guard extraArgs.isEmpty else { fatalError("NYI: Replacement requires insertion of a trampoline block!") }
+            let (newLabel, extraArgs) = jumpSub(label, [])
+            guard extraArgs.isEmpty else { fatalError("Cannot add extra arguments to the switch_enum instruction") }
             return .default(newLabel)
           }
         })
@@ -357,7 +357,7 @@ func replace(inside block: inout Block,
 
 func replace(inside block: inout Block,
                 labels labelSub: (BlockName) -> BlockName) {
-  return replace(inside: &block, jumps: { (labelSub($0), $2) })
+  return replace(inside: &block, jumps: { (labelSub($0), $1) })
 }
 
 // PRECONDITION: cfg is acyclic, and cfg[0] is the entry block
@@ -396,4 +396,88 @@ func topoSort(_ cfg: [Block]) -> [Block] {
   assert(ordered.count == cfg.count)
 
   return ordered
+}
+
+func desugarSwitchTerminators(_ blocks: inout [Block],
+                              suffixGenerator freshSuffix: () -> String) {
+  let blocksByName = blocks.reduce(into: [BlockName: Block]()) {
+    $0[$1.identifier] = $1
+  }
+  let intLiteralType = Type.selectType(.namedType("Builtin"), "IntLiteral")
+  for block in blocks {
+    guard case let .switchEnum(operand, cases) = block.terminatorDef.terminator else { continue }
+    let sourceInfo = block.terminatorDef.sourceInfo
+    let caseValues = (0..<cases.count).map { i -> (name: String, def: OperatorDef) in
+      let name = "%case_value_\(freshSuffix())"
+      return (
+        name: name,
+        def: OperatorDef(Result([name]),
+                        .integerLiteral(intLiteralType, i),
+                        sourceInfo)
+
+      )
+    }
+    let caseIdentifier = "%switch_\(freshSuffix())"
+    block.operatorDefs += caseValues.map{ $0.def }
+    block.operatorDefs.append(
+      OperatorDef(Result([caseIdentifier]),
+                      .selectEnum(operand, zip(cases, caseValues).map {
+                        switch $0.0 {
+                        case let .case(declRef, _): return .case(declRef, $0.1.name)
+                        case .default(_): return .default($0.1.name)
+                        }
+                      }, intLiteralType),
+                      sourceInfo)
+    )
+
+    for c in cases {
+      let targetBlock = blocksByName[c.label]!
+      let args = targetBlock.arguments
+      if !args.isEmpty {
+        assert(args.count == 1)
+        targetBlock.operatorDefs.insert(
+          OperatorDef(Result([args[0].valueName]),
+                          .builtin("any_inhabitant", [], args[0].type),
+                          nil),
+          at: 0
+        )
+        targetBlock.arguments = []
+      }
+    }
+
+    var currentBlock = block
+    for caseIdx in 0..<cases.count {
+      let remaining = cases.count - caseIdx
+      if remaining == 1 {
+        currentBlock.terminatorDef = TerminatorDef(.br(cases[caseIdx].label, []), sourceInfo)
+      } else {
+        if currentBlock !== block {
+          currentBlock.operatorDefs.append(caseValues[caseIdx].def)
+        }
+        let cond = "%is_case_\(freshSuffix())"
+        currentBlock.operatorDefs.append(
+          OperatorDef(Result([cond]),
+                          .builtin("literal_equal",
+                                   [caseIdentifier, caseValues[caseIdx].name].map{ Operand($0, intLiteralType) },
+                                   .selectType(.namedType("Builtin"), "Int1")),
+                          sourceInfo)
+        )
+        let nextTrampoline = "switch_trampoline_\(freshSuffix())"
+        currentBlock.terminatorDef = TerminatorDef(
+          .condBr(cond, cases[caseIdx].label, [], nextTrampoline, []),
+          sourceInfo)
+        currentBlock = Block(nextTrampoline, [], [], TerminatorDef(.unknown("tmp"), nil))
+        blocks.append(currentBlock)
+      }
+    }
+  }
+}
+
+extension Case {
+  var label: String {
+    switch self {
+    case let .case(_, l): return l
+    case let .default(l): return l
+    }
+  }
 }

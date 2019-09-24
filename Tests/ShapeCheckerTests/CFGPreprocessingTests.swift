@@ -145,8 +145,7 @@ final class CFGPreprocessingTests: XCTestCase {
   }
 
   func testUnloopNested() {
-    var cfg = clone(nestedLoopWithAssert)
-    let _ = unloop(&cfg)
+    let cfg = unloop(nestedLoopWithAssert)
     let expectedCFG: [Block] = [
       Block("bb0", ["%0_10", "%1_11"],
             .br("bb1", [o("%0_10"), o("%1_11"), o("%1_11")])),
@@ -164,7 +163,7 @@ final class CFGPreprocessingTests: XCTestCase {
             ],
             .condBr("%8_23", "bb2_bridge", [o("%7_22"), o("%1_20"), o("%2_21")], "bb5", [o("%1_20")])),
       Block("bb2_bridge", ["%unused_1_24", "%1_25", "%2_26"], [
-              OperatorDef(Result(["%5_27"]), .builtin("anyInhabitant", [], .namedType("Int")), nil),
+              OperatorDef(Result(["%5_27"]), .builtin("any_inhabitant", [], .namedType("Int")), nil),
               OperatorDef(Result(["%6_28"]), .builtin("something2", [o("%5_27")], .namedType("Int")), nil),
             ],
             .condBr("%6_28", "bb3_0", [o("%1_25"), o("%2_26")], "bb4_unreachable", [])),
@@ -183,8 +182,8 @@ final class CFGPreprocessingTests: XCTestCase {
             ],
             .condBr("%9_39", "bb1_bridge", [o("%9_39"), o("%10_40"), o("%1_37")], "bb6", [o("%9_39")])),
       Block("bb1_bridge", ["%unused_8_41", "%unused_9_42", "%1_43"], [
-              OperatorDef(Result(["%2_44"]), .builtin("anyInhabitant", [], .namedType("Int")), nil),
-              OperatorDef(Result(["%3_45"]), .builtin("anyInhabitant", [], .namedType("Int")), nil),
+              OperatorDef(Result(["%2_44"]), .builtin("any_inhabitant", [], .namedType("Int")), nil),
+              OperatorDef(Result(["%3_45"]), .builtin("any_inhabitant", [], .namedType("Int")), nil),
               OperatorDef(Result(["%4_46"]), .builtin("something1", [o("%2_44")], .namedType("Int")), nil),
             ],
             .condBr("%4_46", "bb2_2", [o("%3_45"), o("%1_43"), o("%2_44")], "bb5_unreachable", [])),
@@ -198,7 +197,7 @@ final class CFGPreprocessingTests: XCTestCase {
             ],
             .condBr("%8_54", "bb2_bridge_3", [o("%7_53"), o("%1_51"), o("%2_52")], "bb5", [o("%1_51")])),
       Block("bb2_bridge_3", ["%unused_1_55", "%1_56", "%2_57"], [
-              OperatorDef(Result(["%5_58"]), .builtin("anyInhabitant", [], .namedType("Int")), nil),
+              OperatorDef(Result(["%5_58"]), .builtin("any_inhabitant", [], .namedType("Int")), nil),
               OperatorDef(Result(["%6_59"]), .builtin("something2", [o("%5_58")], .namedType("Int")), nil),
             ],
             .condBr("%6_59", "bb3_0_6", [o("%1_56"), o("%2_57")], "bb4_unreachable", [])),
@@ -235,9 +234,11 @@ final class CFGPreprocessingTests: XCTestCase {
 
   func testUnloopProperties() {
     for templateCFG in reducibleExamples {
-      var cfg = clone(templateCFG)
-      let hasLoops = !findLoops(cfg).isEmpty
-      unloop(&cfg)
+      let templateClone = clone(templateCFG)
+      let hasLoops = !findLoops(templateCFG).isEmpty
+      let cfg = unloop(templateCFG)
+      // Make sure that we don't modify the argument inside unloop
+      XCTAssertEqual(templateCFG, templateClone)
       if !hasLoops {
         XCTAssertEqual(cfg, templateCFG)
       } else {
@@ -293,6 +294,77 @@ final class CFGPreprocessingTests: XCTestCase {
     }
   }
 
+  func testDesugarSwitchTerminators() {
+    func generateExample(_ numCases: Int, withDefault: Bool) -> [Block] {
+      var cases: [Case] = (0..<numCases).map{ .case(DeclRef(["case\($0 + 1)"], nil, nil), "bb\($0 + 1)") }
+      if withDefault {
+        cases.append(.default("bb\(numCases + 1)"))
+      }
+      var cfg = [
+        Block("bb0", [], [
+                OperatorDef(Result(["%0"]), .builtin("make_enum", [], .namedType("MyEnum")), nil),
+              ],
+              .switchEnum(Operand("%0", .namedType("MyEnum")), cases)),
+      ]
+      for i in 0..<numCases {
+        cfg.append(Block("bb\(i + 1)", ["%arg\(i + 1)"], [], .unreachable))
+      }
+      if withDefault {
+        cfg.append(Block("bb\(numCases + 1)", .unreachable))
+      }
+      return cfg
+    }
+    let intLiteralType = Type.selectType(.namedType("Builtin"), "IntLiteral")
+    let condType = Type.selectType(.namedType("Builtin"), "Int1")
+
+    var onlyDefault = generateExample(0, withDefault: true)
+    desugarSwitchTerminators(&onlyDefault, suffixGenerator: count(from: 0) .>> String.init)
+    XCTAssertEqual(onlyDefault, [
+        Block("bb0", [], [
+                OperatorDef(Result(["%0"]), .builtin("make_enum", [], .namedType("MyEnum")), nil),
+                OperatorDef(Result(["%case_value_0"]), .integerLiteral(intLiteralType, 0), nil),
+                OperatorDef(Result(["%switch_1"]),
+                            .selectEnum(Operand("%0", .namedType("MyEnum")), [
+                                          .default("%case_value_0")
+                                        ],
+                                        intLiteralType),
+                            nil)
+              ],
+              .br("bb1", [])),
+        Block("bb1", .unreachable)
+    ])
+
+    var exhaustiveTwoCases = generateExample(2, withDefault: false)
+    desugarSwitchTerminators(&exhaustiveTwoCases, suffixGenerator: count(from: 0) .>> String.init)
+    XCTAssertEqual(exhaustiveTwoCases, [
+        Block("bb0", [], [
+                OperatorDef(Result(["%0"]), .builtin("make_enum", [], .namedType("MyEnum")), nil),
+                OperatorDef(Result(["%case_value_0"]), .integerLiteral(intLiteralType, 0), nil),
+                OperatorDef(Result(["%case_value_1"]), .integerLiteral(intLiteralType, 1), nil),
+                OperatorDef(Result(["%switch_2"]),
+                            .selectEnum(Operand("%0", .namedType("MyEnum")), [
+                                          .case(DeclRef(["case1"], nil, nil), "%case_value_0"),
+                                          .case(DeclRef(["case2"], nil, nil), "%case_value_1"),
+                                        ],
+                                        intLiteralType),
+                            nil),
+                OperatorDef(Result(["%is_case_3"]),
+                            .builtin("literal_equal",
+                                     [Operand("%switch_2", intLiteralType), Operand("%case_value_0", intLiteralType)],
+                                     condType),
+                            nil),
+              ],
+              .condBr("%is_case_3", "bb1", [], "switch_trampoline_4", [])),
+        Block("bb1", [], [
+          OperatorDef(Result(["%arg1"]), .builtin("any_inhabitant", [], .namedType("Int")), nil),
+        ], .unreachable),
+        Block("bb2", [], [
+          OperatorDef(Result(["%arg2"]), .builtin("any_inhabitant", [], .namedType("Int")), nil),
+        ], .unreachable),
+        Block("switch_trampoline_4", .br("bb2", []))
+    ])
+  }
+
   func clone(_ cfg: [Block]) -> [Block] {
     return cfg.map {
       Block($0.identifier, $0.arguments, $0.operatorDefs, $0.terminatorDef)
@@ -305,6 +377,7 @@ final class CFGPreprocessingTests: XCTestCase {
     ("testUnloopNested", testUnloopNested),
     ("testUnloopProperties", testUnloopProperties),
     ("testTopoSort", testTopoSort),
+    ("testDesugarSwitchTerminators", testDesugarSwitchTerminators),
   ]
 }
 

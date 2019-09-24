@@ -15,11 +15,10 @@ func abstract(_ function: Function, inside typeEnvironment: TypeEnvironment) -> 
     warn("Control flow inside this function was too complex to be analyzed", nil)
     return nil
   }
-  guard findLoops(function.blocks).isEmpty else {
-    warn("Functions containing loops are not supported", nil)
-    return nil
-  }
-  guard let interpreterState = interpret(function, typeEnvironment) else { return nil }
+  let loopFreeFunction = Function(function.linkage, function.attributes,
+                                  function.name, function.type,
+                                  unloop(function.blocks))
+  guard let interpreterState = interpret(loopFreeFunction, typeEnvironment) else { return nil }
   return FunctionSummary(argExprs: interpreterState.blockArguments[initialBlock.identifier]!,
                          retExpr: interpreterState.retExpr,
                          constraints: interpreterState.constraints)
@@ -142,8 +141,10 @@ fileprivate class interpret {
   }
 
   func interpret(_ block: Block) -> Bool {
-    let pathCondition = pathConditions[block.identifier].reduce(.false, ||)
-
+    // NB: We sort the conditions to make sure that this process is deterministic.
+    // TODO: Sort by a cheaper key.
+    let pathCondition = pathConditions[block.identifier].sorted(by: { $0.description < $1.description })
+                                                        .reduce(.false, ||)
     var instructions = block.operatorDefs.makeIterator()
     while let operatorDef = instructions.next() {
       var updates: [AbstractValue?]?
@@ -173,14 +174,23 @@ fileprivate class interpret {
         updates = [.int(.literal(value))]
 
       case let .builtin(name, operands, type):
-        guard name == arrayLiteralBuiltinName,
-              .specializedType(.namedType("Array"), [.namedType("Int")]) == type else { continue }
-        guard let arrayReg = operands.first?.value else { continue }
-        let elementExprs = operands[1...].map{ (operand: Operand) -> IntExpr? in
-          guard case let .int(expr) = valuation[operand.value] else { return nil }
-          return expr
+        switch name {
+        case arrayLiteralBuiltinName:
+          guard .specializedType(.namedType("Array"), [.namedType("Int")]) == type else { continue }
+          guard let arrayReg = operands.first?.value else { continue }
+          let elementExprs = operands[1...].map{ (operand: Operand) -> IntExpr? in
+            guard case let .int(expr) = valuation[operand.value] else { return nil }
+            return expr
+          }
+          valuation[arrayReg] = .list(.literal(elementExprs))
+        case "literal_equal":
+          assert(operands.count == 2)
+          let operandValues = operands.map{ valuation[$0.value, setDefault: freshVar(.namedType("Int"))] }
+          guard case let .int(lhs) = operandValues[0],
+                case let .int(rhs) = operandValues[1] else { fatalError() }
+          updates = [.bool(.intEq(lhs, rhs))]
+        default: break
         }
-        valuation[arrayReg] = .list(.literal(elementExprs))
 
       case let .functionRef(name, _):
         updates = [.function(name)]
@@ -322,6 +332,8 @@ fileprivate class interpret {
       case let .switchEnum(_, cases):
         // We don't really know too much about enums right now, so we simply treat each branch as
         // being independent, and don't learn anything from the condition.
+        // TODO: Unloop already eliminates those and makes it possible for us to realize that those
+        //       branches are exclusive.
         for c in cases {
           switch c {
           case let .case(_, label): fallthrough

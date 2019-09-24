@@ -325,7 +325,7 @@ func ||(_ a: BoolExpr, _ b: BoolExpr) -> BoolExpr {
   case let (.or(aClauses), .or(bClauses)):
     return .or(aClauses + bClauses)
   case let (.or(clauses), cond): fallthrough
-  case let (cond, .and(clauses)):
+  case let (cond, .or(clauses)):
     return .or(clauses + [cond])
   default:
     return .or([a, b])
