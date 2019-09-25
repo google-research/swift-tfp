@@ -35,7 +35,35 @@ let preprocess = inlineBoolVars >>>
                  { inline($0, canInline: isImpliedShapeEq) } >>>
                  { inline($0, canInline: isImpliedOrShapeEq) }
 
-func verify(_ constraints: [Constraint]) -> SolverResult {
+func verify(_ originalConstraints: [Constraint]) -> SolverResult {
+  var seen: Set<BoolExpr> = [.true]
+  let assumptions = originalConstraints.compactMap { constraint -> BoolExpr? in
+    guard !seen.contains(constraint.assumption) else { return nil }
+    seen.insert(constraint.assumption)
+    return constraint.assumption
+  }
+  var constraints = originalConstraints
+
+  func verify(_ constraints: inout [Constraint], underAssumption assumption: BoolExpr) -> SolverResult {
+    constraints.append(.expr(assumption, assuming: .true, .implied, .top))
+    defer { let _ = constraints.popLast() }
+    return doVerify(constraints)
+  }
+
+  for assumption in assumptions {
+    // Make sure that the path seems to be reachable
+    var constraintsWithoutAssumed = constraints.filter { $0.assumption != assumption }
+    guard case .sat(_) = verify(&constraintsWithoutAssumed,
+                                underAssumption: assumption) else { continue }
+    if case let .unsat(core) = verify(&constraints, underAssumption: assumption) {
+      return .unsat(core)
+    }
+  }
+
+  return verify(&constraints, underAssumption: .true)
+}
+
+func doVerify(_ constraints: [Constraint]) -> SolverResult {
   // TODO: We don't really need to construct the models if there are no holes
   let solver = Z3Context.default.makeSolver()
   var shapeVars = Set<ListVar>()

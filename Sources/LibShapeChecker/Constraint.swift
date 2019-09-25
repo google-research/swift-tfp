@@ -120,6 +120,18 @@ public enum RawConstraint: Hashable {
 public enum Constraint: Hashable {
   case expr(BoolExpr, assuming: BoolExpr, ConstraintOrigin, CallStack)
 
+  var expr: BoolExpr {
+    switch self {
+    case let .expr(expr, _, _, _): return expr
+    }
+  }
+
+  var assumption: BoolExpr {
+    switch self {
+    case let .expr(_, assuming: assumption, _, _): return assumption
+    }
+  }
+
   var origin: ConstraintOrigin {
     switch self {
     case let .expr(_, _, origin, _): return origin

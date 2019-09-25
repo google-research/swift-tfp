@@ -1,4 +1,3 @@
-* Implement verification for all paths through the program
 * Simplification through shape indexing
 * Support for explicit init inside structs
 * More efficient verification (e.g. start with roots and only descend if failures are found)

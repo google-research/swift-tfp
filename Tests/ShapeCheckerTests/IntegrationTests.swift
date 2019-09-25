@@ -92,12 +92,30 @@ final class IntegrationTests: XCTestCase {
     }
   }
 
+  func testPathExploration() {
+    let code = """
+    @_silgen_name("f")
+    func f(_ x: Tensor<Float>) {
+      if x.shape[0] == 2 {
+        assert(x.shape[0] == 3)
+      }
+    }
+    """
+    withSIL(forSource: code) { module, silPath in
+      let analyzer = Analyzer()
+      analyzer.analyze(module)
+      let constraints = instantiate(constraintsOf: "f", inside: analyzer.environment)
+      assertUnsat(verify(constraints))
+    }
+  }
+
 
   static var allTests = [
     ("testMatmulSingleArg", testMatmulSingleArg),
     ("testCustomPredicate", testCustomPredicate),
     ("testFactory", testFactory),
     ("testStruct", testStruct),
+    ("testPathExploration", testPathExploration),
   ]
 }
 

@@ -58,7 +58,6 @@ func computeWeakestAssumptions(_ constraints: [Constraint]) -> [Var: BoolExpr] {
 // Tries to iteratively go over expressions, simplify them, and in case they
 // equate a variable with an expression, inline the definition of this variable
 // into all following constraints.
-// FIXME: We need to substitute the conditions too!!!!!
 func inline(_ originalConstraints: [Constraint],
             canInline: (Constraint) -> Bool = { $0.complexity <= 20 },
             simplifying shouldSimplify: Bool = true) -> [Constraint] {
@@ -80,44 +79,33 @@ func inline(_ originalConstraints: [Constraint],
       return nil
     }
 
-    func handleEquality(_ v: Var, _ originalExpr: Expr, assuming cond: BoolExpr) -> (Expr, Expr)? {
+    func tryInline(_ v: Var, _ originalExpr: Expr, assuming cond: BoolExpr) -> Bool {
+      guard !inlined.keys.contains(v),
+            weakestAssumption[v]! =>? cond else { return false }
       let expr = simplifyExpr(substitute(originalExpr, using: subst))
-      if let alreadyInlined = inlined[v] {
-        return (alreadyInlined, expr)
-      } else {
-        if weakestAssumption[v]! =>? cond && !inlineForbidden.contains(v) {
-          inlined[v] = expr
-          return nil
-        } else {
-          return (v.expr, expr)
-        }
-      }
+      // NB: The substitution above might have added the variable to inlineForbidden
+      guard !inlineForbidden.contains(v) else { return false }
+      inlined[v] = expr
+      return true
     }
 
-    constraints = constraints.flatMap {
-      (constraint: Constraint) -> [Constraint] in
+    constraints = constraints.compactMap { constraint in
       if canInline(constraint) {
-        switch constraint {
-        case let .expr(.listEq(.var(v), expr), assuming: cond, origin, stack):
-          if let (lhs, rhs) = handleEquality(.list(v), .list(expr), assuming: cond) {
-            return (lhs ≡ rhs).map{ .expr($0, assuming: cond, origin, stack) }
-          }
-          return []
-        case let .expr(.intEq(.var(v), expr), assuming: cond, origin, stack):
-          if let (lhs, rhs) = handleEquality(.int(v), .int(expr), assuming: cond) {
-            return (lhs ≡ rhs).map{ .expr($0, assuming: cond, origin, stack) }
-          }
-          return []
-        case let .expr(.boolEq(.var(v), expr), assuming: cond, origin, stack):
-          if let (lhs, rhs) = handleEquality(.bool(v), .bool(expr), assuming: cond) {
-            return (lhs ≡ rhs).map{ .expr($0, assuming: cond, origin, stack) }
-          }
-          return []
-        default:
-          break
+        let cond = constraint.assumption
+        switch constraint.expr {
+        case let .listEq(.var(v), expr),
+             let .listEq(expr, .var(v)):
+          if tryInline(.list(v), .list(expr), assuming: cond) { return nil }
+        case let .intEq(.var(v), expr),
+             let .intEq(expr, .var(v)):
+          if tryInline(.int(v), .int(expr), assuming: cond) { return nil }
+        case let .boolEq(.var(v), expr),
+             let .boolEq(expr, .var(v)):
+          if tryInline(.bool(v), .bool(expr), assuming: cond) { return nil }
+        default: break
         }
       }
-      return [simplifyConstraint(substitute(constraint, using: subst))]
+      return simplifyConstraint(substitute(constraint, using: subst))
     }
     if inlined.isEmpty { break }
   }
