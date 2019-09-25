@@ -1,11 +1,5 @@
-* Control flow support
-* Improve the transforms such that they can work with constraints that have non-trivial assumptions
-  - For example, if a variable is only used in constraints that are not weaker than one of
-    its definitions, then we can inline that definition!
-* Figure out how to better deal with shape equality constraints under guards
-  - Perhaps we could still resolve them if all uses of one variable are guarded under a
-    conditon that's implied by the equality guard.
-* Simplification through shape indexing (when a shape is only used in indexing)
+* Implement verification for all paths through the program
+* Simplification through shape indexing
 * Support for explicit init inside structs
 * More efficient verification (e.g. start with roots and only descend if failures are found)
 * Be more correct wrt. not treating everything as shapes

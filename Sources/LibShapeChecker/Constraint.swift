@@ -36,7 +36,6 @@ public indirect enum IntExpr: Hashable, ExpressibleByIntegerLiteral {
   case literal(Int)
   case length(of: ListExpr)
   // TODO: Accept int expressions instead of literals only?
-  // TODO: Handle negative integers
   case element(Int, of: ListExpr)
 
   case add(IntExpr, IntExpr)
