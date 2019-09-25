@@ -2,6 +2,18 @@
 import SIL
 import XCTest
 
+func resolveEqualities(_ constraints: [Constraint]) -> [Constraint] {
+  return inline(constraints, canInline: {
+    switch $0 {
+    case .expr(.listEq(.var(_), .var(_)), assuming: _, _, _): return true
+    case .expr(.intEq(.var(_), .var(_)), assuming: _, _, _): return true
+    case .expr(.boolEq(.var(_), .var(_)), assuming: _, _, _): return true
+    default: return false
+    }
+  }, simplifying: false)
+}
+
+
 @available(macOS 10.13, *)
 final class AnalysisTests: XCTestCase {
   let s0 = ListExpr.var(ListVar(0))
@@ -39,10 +51,8 @@ final class AnalysisTests: XCTestCase {
   func d(_ i: Int) -> IntExpr { return .var(IntVar(i)) }
   func b(_ i: Int) -> BoolExpr { return .var(BoolVar(i)) }
 
-  let normalize = { resolveEqualities($0, strength: .everything) } >>>
-                  inlineBoolVars >>>
-                  { resolveEqualities($0, strength: .everything) } >>>
-                  alphaNormalize
+  let weakNormalize = inlineBoolVars >>> resolveEqualities >>> alphaNormalize
+  let normalize = { inline($0, simplifying: false) } >>> alphaNormalize
 
   func eraseStacks(_ constraints: [Constraint]) -> [Constraint] {
     return constraints.map {
@@ -98,16 +108,18 @@ final class AnalysisTests: XCTestCase {
     let code = """
     @_silgen_name("f")
     func f() {
-      let _ = randn([2, 3])
+      let x = randn([2, 3])
+      assert(x.shape[0] == 2)
     }
     """
     withSIL(forSource: randnCode + code) { module, _ in
       let analyzer = Analyzer()
       analyzer.analyze(module)
-      let f = instantiate(constraintsOf: "f", inside: analyzer.environment)
-      XCTAssertTrue(normalize(f).compactMap{ $0.exprWithoutCond }.contains(
-        .listEq(s0, .literal([2, 3]))
-      ))
+      let f = weakNormalize(instantiate(constraintsOf: "f", inside: analyzer.environment)).compactMap{ $0.exprWithoutCond }
+      XCTAssertEqual(f, [
+        .listEq(s0, .literal([2, 3])),
+        .intEq(.element(0, of: s0), 2)
+      ])
     }
   }
 
@@ -130,10 +142,10 @@ final class AnalysisTests: XCTestCase {
       let analyzer = Analyzer()
       analyzer.analyze(module)
       let f = normalize(instantiate(constraintsOf: "f", inside: analyzer.environment)).compactMap{ $0.exprWithoutCond }
-      XCTAssertTrue(f.contains(.intEq(d0, .element(0, of: s1))))
-      XCTAssertTrue(f.contains(.intEq(d0, .element(1, of: s1))))
-      XCTAssertTrue(f.contains(.intEq(d2, .element(0, of: s1))))
-      XCTAssertTrue(f.contains(.intEq(d2, .element(1, of: s1))))
+      XCTAssertEqual(f, [
+        .intEq(.element(0, of: s0), .element(1, of: s0)),
+        .intEq(.element(0, of: s0), .element(1, of: s0))
+      ])
     }
   }
 
@@ -176,14 +188,15 @@ final class AnalysisTests: XCTestCase {
     withSIL(forSource: code) { module, silPath in
       let analyzer = Analyzer()
       analyzer.analyze(module)
-      let f = normalize(instantiate(constraintsOf: "f", inside: analyzer.environment))
+      let f = weakNormalize(instantiate(constraintsOf: "f", inside: analyzer.environment))
       guard case let .expr(_, assuming: _, _, .frame(.file(swiftPath, line: _), caller: _)) = f.first else {
         return XCTFail("Failed to get the Swift file path")
       }
       let topFrame = CallStack.frame(.file(swiftPath, line: 8), caller: .top)
+      let callFrame = CallStack.frame(.file(swiftPath, line: 3), caller: topFrame)
       XCTAssertEqual(f, [
         .expr(.intEq(d0, 5), assuming: .true, .implied, topFrame),
-        .expr(.intEq(d0, 4), assuming: .true, .asserted, .frame(.file(swiftPath, line: 3), caller: topFrame)),
+        .expr(.intEq(d0, 4), assuming: .true, .asserted, callFrame),
       ])
     }
   }
@@ -272,21 +285,12 @@ final class AnalysisTests: XCTestCase {
       let analyzer = Analyzer()
       analyzer.analyze(module)
       let f = normalize(instantiate(constraintsOf: "f", inside: analyzer.environment)).map{ $0.unpackExprs }
-      let yes = BoolExpr.intEq(.element(0, of: s1), 2)
+      let yes = BoolExpr.intEq(.element(0, of: s0), 2)
       let no = BoolExpr.not(yes)
       XCTAssertEqual(f, [
-        (.listEq(s0, s1), assuming: yes),
-        (.boolEq(b2, .intEq(.element(1, of: s0), 3)), assuming: yes),
-        (.boolEq(b3, b2), assuming: yes),
-        (b3, assuming: yes),
-        (.listEq(s4, s1), assuming: no),
-        (.boolEq(b5, .intEq(.element(0, of: s4), 4)), assuming: no),
-        (.boolEq(b6, b5), assuming: no),
-        (b6, assuming: no),
-        (.listEq(s7, s1), assuming: no),
-        (.boolEq(b8, .intEq(.element(1, of: s7), 8)), assuming: no),
-        (.boolEq(b9, b8), assuming: no),
-        (b9, assuming: no),
+        (.intEq(.element(1, of: s0), 3), assuming: yes),
+        (.intEq(.element(0, of: s0), 4), assuming: no),
+        (.intEq(.element(1, of: s0), 8), assuming: no),
       ].map{ ExprAndAssumption($0.0, assuming: $0.assuming) })
     }
   }
@@ -306,32 +310,17 @@ final class AnalysisTests: XCTestCase {
       let analyzer = Analyzer()
       analyzer.analyze(module)
       let f = normalize(instantiate(constraintsOf: "f", inside: analyzer.environment)).map{ $0.unpackExprs }
-      let loopTaken = BoolExpr.intEq(d2, 0)
-      let loopSkipped = BoolExpr.not(.intEq(d2, 0))
-      let loopBridge = BoolExpr.and([.intEq(d2, 0), .intEq(d9, 0)])
-      let loopComplete = BoolExpr.and([.intEq(d2, 0), .intEq(d9, 0), .not(.intEq(d(15), 0))])
+      let loopSkipped = BoolExpr.not(.intEq(d1, 0))
+      let loopEntered = BoolExpr.intEq(d1, 0)
+      let loopBridge = BoolExpr.and([.intEq(d1, 0), .intEq(d2, 0)])
+      let loopComplete = BoolExpr.and([.intEq(d1, 0), .intEq(d2, 0), .not(.intEq(d4, 0))])
       XCTAssertEqual(f, [
         (.intEq(.element(1, of: s0), 3), assuming: .true),
-        (.listEq(s1, s0), assuming: loopTaken),
+        (.intEq(.element(1, of: s0), 4), assuming: loopEntered),
+        (.intEq(.element(1, of: s0), 4), assuming: loopBridge),
+        (.listEq(s3, s0), assuming: loopComplete),
         (.listEq(s3, s0), assuming: loopSkipped),
-        (.listEq(s4, s1), assuming: loopTaken),
-        (.boolEq(b5, .intEq(.element(1, of: s4), 4)), assuming: loopTaken),
-        (.boolEq(b6, b5), assuming: loopTaken),
-        (b6, assuming: loopTaken),
-        (.listEq(s7, s1), assuming: loopTaken),
-        (.listEq(s8, s7), assuming: loopBridge),
-        (.listEq(s(10), s8), assuming: loopBridge),
-        (.boolEq(b(11), .intEq(.element(1, of: s(10)), 4)), assuming: loopBridge),
-        (.boolEq(b(12), b(11)), assuming: loopBridge),
-        (b(12), assuming: loopBridge),
-        (.listEq(s(13), s8), assuming: loopBridge),
-        (.listEq(s(14), s(13)), assuming: loopComplete),
-        (.listEq(s(16), s(14)), assuming: loopComplete),
-        (.listEq(s(16), s3), assuming: loopSkipped),
-        (.listEq(s(17), s(16)), assuming: .or([loopSkipped, loopComplete])),
-        (.boolEq(b(18), .intEq(.element(0, of: s(17)), 2)), assuming: .or([loopSkipped, loopComplete])),
-        (.boolEq(b(19), b(18)), assuming: .or([loopSkipped, loopComplete])),
-        (b(19), assuming: .or([loopSkipped, loopComplete])),
+        (.intEq(.element(0, of: s3), 2), assuming: .or([loopSkipped, loopComplete])),
       ].map{ ExprAndAssumption($0.0, assuming: $0.assuming) })
     }
   }

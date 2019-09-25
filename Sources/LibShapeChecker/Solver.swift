@@ -12,21 +12,28 @@ enum SolverResult: Equatable {
 
 func isImpliedShapeEq(_ constraint: Constraint) -> Bool {
   switch constraint {
-  case .expr(.listEq(_, _), assuming: _, .implied, _): return true
+  case .expr(.listEq(.var(_), .var(_)), assuming: _, .implied, _): return true
+  default: return false
+  }
+}
+
+func isImpliedOrShapeEq(_ constraint: Constraint) -> Bool {
+  switch constraint {
+  case .expr(_, assuming: _, .implied, _): return true
+  case .expr(.listEq(.var(_), .var(_)), assuming: _, _, _): return true
   default: return false
   }
 }
 
 // First, resolve the unnecessary equations that have been added at call sites.
 // This should have exposed the boolean conditions that are then asserted directly,
-// so we attemp to inline those next.
+// so we attempt to inline those next.
 // Finally, before we attempt to resolve all shape equalities (for performance reasons)
 // try to inline the implied ones into those that were asserted to make it more likely
 // that user-written assertions show up in unsat cores.
-let preprocess = { resolveEqualities($0, strength: .implied) } >>>
-                 inlineBoolVars >>>
+let preprocess = inlineBoolVars >>>
                  { inline($0, canInline: isImpliedShapeEq) } >>>
-                 { resolveEqualities($0, strength: .all(of: [.shape, .implied])) }
+                 { inline($0, canInline: isImpliedOrShapeEq) }
 
 func verify(_ constraints: [Constraint]) -> SolverResult {
   // TODO: We don't really need to construct the models if there are no holes

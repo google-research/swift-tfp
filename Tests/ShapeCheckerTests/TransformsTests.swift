@@ -14,63 +14,6 @@ final class TransformsTests: XCTestCase {
   let b2 = BoolExpr.var(BoolVar(2))
   let b3 = BoolExpr.var(BoolVar(3))
 
-  func testResolveEqualities() {
-    XCTAssertEqual(resolveEqualities([
-      .expr(.listEq(s0, s1), assuming: .true, .asserted, .top),
-      .expr(.listEq(s1, .literal([nil])), assuming: .true, .asserted, .top),
-      .expr(.intGt(d1, 2), assuming: .true, .asserted, .top),
-      .expr(.intEq(d0, d1), assuming: .true, .asserted, .top),
-    ], strength: .everything), [
-      .expr(.listEq(s0, .literal([nil])), assuming: .true, .asserted, .top),
-      .expr(.intGt(d0, 2), assuming: .true, .asserted, .top),
-    ])
-    XCTAssertEqual(resolveEqualities([
-      .expr(.listEq(s0, s1), assuming: .true, .asserted, .top),
-      .expr(.listEq(s1, .literal([nil])), assuming: .true, .asserted, .top),
-      .expr(.intGt(d2, 2), assuming: .true, .asserted, .top),
-      .expr(.intEq(d0, d1), assuming: .true, .asserted, .top),
-      .expr(.intEq(d1, d2), assuming: .true, .implied, .top),
-    ], strength: .all(of: [.shape, .implied])), [
-      .expr(.listEq(s0, .literal([nil])), assuming: .true, .asserted, .top),
-      .expr(.intGt(d1, 2), assuming: .true, .asserted, .top),
-      .expr(.intEq(d0, d1), assuming: .true, .asserted, .top),
-    ])
-    XCTAssertEqual(resolveEqualities([
-      .expr(.listEq(s0, s1), assuming: .true, .asserted, .top),
-      .expr(.listEq(s1, .literal([nil])), assuming: .true, .asserted, .top),
-      .expr(.intGt(d1, .literal(2)), assuming: .true, .asserted, .top),
-      .expr(.intEq(d0, d1), assuming: .true, .asserted, .top),
-    ], strength: .shape), [
-      .expr(.listEq(s0, .literal([nil])), assuming: .true, .asserted, .top),
-      .expr(.intGt(d1, .literal(2)), assuming: .true, .asserted, .top),
-      .expr(.intEq(d0, d1), assuming: .true, .asserted, .top),
-    ])
-  }
-
-  func testInlineBoolVars() {
-    XCTAssertEqual(inlineBoolVars([
-      .expr(b0, assuming: .true, .asserted, .top),
-      .expr(.boolEq(b0, .intGt(d0, .literal(2))), assuming: .true, .asserted, .top),
-    ]), [
-      .expr(.intGt(d0, .literal(2)), assuming: .true, .asserted, .top),
-    ])
-    // Not perfect, but good enough for now
-    XCTAssertEqual(inlineBoolVars([
-      .expr(b1, assuming: .true, .asserted, .top),
-      .expr(.boolEq(b1, b0), assuming: .true, .asserted, .top),
-      .expr(.boolEq(b0, .intGt(d0, .literal(4))), assuming: .true, .asserted, .top),
-    ]), [
-      .expr(b0, assuming: .true, .asserted, .top),
-      .expr(.boolEq(b0, .intGt(d0, .literal(4))), assuming: .true, .asserted, .top),
-    ])
-    let hard: [Constraint] = [
-      .expr(.boolEq(b0, b1), assuming: .true, .asserted, .top),
-      .expr(.boolEq(b0, .intGt(d0, .literal(4))), assuming: .true, .asserted, .top),
-      .expr(b1, assuming: .true, .asserted, .top),
-    ]
-    XCTAssertEqual(inlineBoolVars(hard), hard)
-  }
-
   func testSimplify() {
     XCTAssertEqual(simplify(.add(2, 4)), 6)
     XCTAssertEqual(simplify(.add(d1, 0)), d1)
@@ -138,8 +81,6 @@ final class TransformsTests: XCTestCase {
   }
 
   static var allTests = [
-    ("testResolveEqualities", testResolveEqualities),
-    ("testInlineBoolVars", testInlineBoolVars),
     ("testSimplify", testSimplify),
     ("testDeduplicate", testDeduplicate),
     ("testInline", testInline),

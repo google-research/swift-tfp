@@ -302,6 +302,31 @@ func ≡(_ a: Expr, _ b: Expr) -> [BoolExpr] {
   }
 }
 
+// This operator queries a very limited solver that is implemented below
+// with implication problems. The result is true if the implication holds,
+// or false when it cannot be proven (i.e. a false result DOES NOT mean
+// that it doesn't hold).
+infix operator =>?: ComparisonPrecedence
+
+// XXX: This is at least quadratic in the total size of those expressions.
+func =>?(_ a: BoolExpr, _ b: BoolExpr) -> Bool {
+  if b == .true { return true }
+  if a == .false { return true }
+  if a == b { return true }
+  switch (a, b) {
+  case let (clause, .and(clauses)):
+    return clauses.allSatisfy { clause =>? $0 }
+  case let (.and(clauses), clause):
+    return clauses.contains { $0 =>? clause }
+  case let (.or(clauses), clause):
+    return clauses.allSatisfy { $0 =>? clause }
+  case let (clause, .or(clauses)):
+    return clauses.contains { clause =>? $0 }
+  default: break
+  }
+  return false
+}
+
 // && with simplification built in
 func &&(_ a: BoolExpr, _ b: BoolExpr) -> BoolExpr {
   switch (a, b) {

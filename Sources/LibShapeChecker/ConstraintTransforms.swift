@@ -12,6 +12,7 @@ func alphaNormalize(_ constraints: [Constraint]) -> [Constraint] {
 // constraint appearing twice (only the first occurence is retained.
 public func deduplicate(_ constraints: [Constraint]) -> [Constraint] {
   var seen = Set<Constraint>()
+  // TODO: Origin and stack don't matter
   return constraints.compactMap {
     guard !seen.contains($0) else { return nil }
     seen.insert($0)
@@ -19,162 +20,121 @@ public func deduplicate(_ constraints: [Constraint]) -> [Constraint] {
   }
 }
 
+// Preprocess constraints to find the weakest assumption under which a
+// variable is used. This is useful, because it allows us to e.g. inline
+// equalities when we have a guarantee that all users of a variable have
+// to satisfy the same assumption that the equality does.
+func computeWeakestAssumptions(_ constraints: [Constraint]) -> [Var: BoolExpr] {
+  var userAssumptions = DefaultDict<Var, Set<BoolExpr>>{ _ in [] }
+  for constraint in constraints {
+    switch constraint {
+    case let .expr(expr, assuming: cond, _, _):
+      let _ = substitute(expr, using: {
+        userAssumptions[$0].insert(cond)
+        return nil
+      })
+    }
+  }
+
+  var weakestAssumption: [Var: BoolExpr] = [:]
+  for entry in userAssumptions.dictionary {
+    let assumptions = entry.value.sorted(by: { $0.description < $1.description })
+    var currentWeakest = assumptions[0]
+    for assumption in assumptions.suffix(from: 1) {
+      if assumption =>? currentWeakest {
+        continue
+      } else if currentWeakest =>? assumption {
+        currentWeakest = assumption
+      } else {
+        currentWeakest = .true
+      }
+    }
+    weakestAssumption[entry.key] = currentWeakest
+  }
+
+  return weakestAssumption
+}
+
 // Tries to iteratively go over expressions, simplify them, and in case they
 // equate a variable with an expression, inline the definition of this variable
 // into all following constraints.
+// FIXME: We need to substitute the conditions too!!!!!
 func inline(_ originalConstraints: [Constraint],
-            canInline: (Constraint) -> Bool = { $0.complexity <= 20 }) -> [Constraint] {
-  var inlined: [Var: Expr] = [:]
-  var inlineForbidden = Set<Var>()
+            canInline: (Constraint) -> Bool = { $0.complexity <= 20 },
+            simplifying shouldSimplify: Bool = true) -> [Constraint] {
+  // NB: It is safe to reuse this accross iterations.
+  let weakestAssumption = computeWeakestAssumptions(originalConstraints)
+  let simplifyExpr: (Expr) -> Expr = shouldSimplify ? simplify : { $0 }
+  let simplifyConstraint: (Constraint) -> Constraint = shouldSimplify ? simplify : { $0 }
 
-  func subst(_ v: Var) -> Expr? {
-    if let replacement = inlined[v] {
-      return replacement
+  var constraints = originalConstraints
+  while true {
+    var inlined: [Var: Expr] = [:]
+    var inlineForbidden = Set<Var>()
+
+    func subst(_ v: Var) -> Expr? {
+      if let replacement = inlined[v] {
+        return replacement
+      }
+      inlineForbidden.insert(v)
+      return nil
     }
-    inlineForbidden.insert(v)
-    return nil
-  }
 
-  func handleEquality(_ v: Var, _ originalExpr: Expr) -> (Expr, Expr)? {
-    if let alreadyInlined = inlined[v] {
-      return (alreadyInlined, simplify(substitute(originalExpr, using: subst)))
-    } else {
-      let expr = simplify(substitute(originalExpr, using: subst))
-      if !inlineForbidden.contains(v) {
-        inlined[v] = expr
-        return nil
+    func handleEquality(_ v: Var, _ originalExpr: Expr, assuming cond: BoolExpr) -> (Expr, Expr)? {
+      let expr = simplifyExpr(substitute(originalExpr, using: subst))
+      if let alreadyInlined = inlined[v] {
+        return (alreadyInlined, expr)
       } else {
-        return (v.expr, expr)
-      }
-    }
-  }
-
-  let constraints = originalConstraints.flatMap {
-    (constraint: Constraint) -> [Constraint] in
-    if canInline(constraint) {
-      switch constraint {
-      case let .expr(.listEq(.var(v), expr), assuming: .true, origin, stack):
-        if let (lhs, rhs) = handleEquality(.list(v), .list(expr)) {
-          return (lhs ≡ rhs).map{ .expr($0, assuming: .true, origin, stack) }
+        if weakestAssumption[v]! =>? cond && !inlineForbidden.contains(v) {
+          inlined[v] = expr
+          return nil
+        } else {
+          return (v.expr, expr)
         }
-        return []
-      case let .expr(.intEq(.var(v), expr), assuming: .true, origin, stack):
-        if let (lhs, rhs) = handleEquality(.int(v), .int(expr)) {
-          return (lhs ≡ rhs).map{ .expr($0, assuming: .true, origin, stack) }
+      }
+    }
+
+    constraints = constraints.flatMap {
+      (constraint: Constraint) -> [Constraint] in
+      if canInline(constraint) {
+        switch constraint {
+        case let .expr(.listEq(.var(v), expr), assuming: cond, origin, stack):
+          if let (lhs, rhs) = handleEquality(.list(v), .list(expr), assuming: cond) {
+            return (lhs ≡ rhs).map{ .expr($0, assuming: cond, origin, stack) }
+          }
+          return []
+        case let .expr(.intEq(.var(v), expr), assuming: cond, origin, stack):
+          if let (lhs, rhs) = handleEquality(.int(v), .int(expr), assuming: cond) {
+            return (lhs ≡ rhs).map{ .expr($0, assuming: cond, origin, stack) }
+          }
+          return []
+        case let .expr(.boolEq(.var(v), expr), assuming: cond, origin, stack):
+          if let (lhs, rhs) = handleEquality(.bool(v), .bool(expr), assuming: cond) {
+            return (lhs ≡ rhs).map{ .expr($0, assuming: cond, origin, stack) }
+          }
+          return []
+        default:
+          break
         }
-        return []
-      case let .expr(.boolEq(.var(v), expr), assuming: .true, origin, stack):
-        if let (lhs, rhs) = handleEquality(.bool(v), .bool(expr)) {
-          return (lhs ≡ rhs).map{ .expr($0, assuming: .true, origin, stack) }
-        }
-        return []
-      default:
-        break
       }
+      return [simplifyConstraint(substitute(constraint, using: subst))]
     }
-    return [simplify(substitute(constraint, using: subst))]
+    if inlined.isEmpty { break }
   }
-
-  return inlined.isEmpty ? constraints : inline(constraints, canInline: canInline)
-}
-
-public enum EqualityResolutionStrength {
-  case shape
-  case implied
-  case everything
-  case all(of: [EqualityResolutionStrength])
-
-  func shouldResolve(_ constraint: Constraint) -> Bool {
-    switch self {
-    case .shape:
-      switch constraint {
-      case .expr(.listEq(_, _), assuming: .true, _, _): return true
-      default: return false
-      }
-    case .implied:
-      switch constraint {
-      case .expr(_, assuming: .true, .implied, _): return true
-      default: return false
-      }
-    case .everything:
-      return true
-    case let .all(of: kinds):
-      return kinds.contains(where: { $0.shouldResolve(constraint) })
-    }
-  }
-}
-
-// Looks for variable equality statements and replaces all occurences of variables
-// within a single equality class with its representative.
-// NB: As much as it is both easy and possible to deal with equalities
-//     on the int and bool level, keeping those usually allows us to provide
-//     much better locations for error messages. Hence, we only deal with
-//     lists here, because that case is very important to eliminate the number
-//     of quantifier instantiations in the solver.
-public func resolveEqualities(_ constraints: [Constraint],
-                              strength: EqualityResolutionStrength) -> [Constraint] {
-  var equalityClasses = DefaultDict<Var, UnionFind<Var>>{ UnionFind($0) }
-
-  let subset: [Constraint] = constraints.compactMap { (constraint: Constraint) -> Constraint? in
-    guard strength.shouldResolve(constraint) else { return constraint }
-    switch constraint {
-    case let .expr(expr, assuming: cond, _, _):
-      guard cond == .true else { return constraint }
-      switch expr {
-      case let .listEq(.var(lhs), .var(rhs)):
-        union(equalityClasses[.list(lhs)], equalityClasses[.list(rhs)])
-        return nil
-      case let .intEq(.var(lhs), .var(rhs)):
-        union(equalityClasses[.int(lhs)], equalityClasses[.int(rhs)])
-        return nil
-      case let .boolEq(.var(lhs), .var(rhs)):
-        union(equalityClasses[.bool(lhs)], equalityClasses[.bool(rhs)])
-        return nil
-      default:
-        return constraint
-      }
-    }
-  }
-
-  return subset.map {
-    substitute($0, using: { representative(equalityClasses[$0]).expr })
-  }
+  return constraints
 }
 
 // Assertion instantiations produce patterns of the form:
 // b4 = <cond>, b4
 // This function tries to find those and inline the conditions.
-// TODO: This could be implemented through inline, but inline is currently unable to
-//       resolve cases like b4, b4 = <cond>, because it doesn't sort the input.
 public func inlineBoolVars(_ constraints: [Constraint]) -> [Constraint] {
-  var usedBoolVars = Set<BoolVar>()
-  func gatherBoolVars(_ constraint: Constraint) {
-    let _ = substitute(constraint, using: {
-      if case let .bool(v) = $0 { usedBoolVars.insert(v) }
-      return nil
-    })
-  }
-
-  var exprs: [BoolVar: BoolExpr] = [:]
-  for constraint in constraints {
-    if case let .expr(.boolEq(.var(v), expr), assuming: .true, origin, stack) = constraint, exprs[v] == nil {
-      exprs[v] = expr
-      gatherBoolVars(.expr(expr, assuming: .true, origin, stack))
-    } else if case .expr(.var(_), assuming: _, _, _) = constraint {
-      // Do nothing. Those don't count as uses that would prevent us from inlining.
-    } else {
-      gatherBoolVars(constraint)
+  return inline(constraints, canInline: {
+    switch $0 {
+    case .expr(.boolEq(.var(_), _), assuming: _, _, _): return true
+    case .expr(.boolEq(_, .var(_)), assuming: _, _, _): return true
+    default: return false
     }
-  }
-
-  return constraints.compactMap { constraint in
-    if case let .expr(.boolEq(.var(v), _), assuming: .true, _, _) = constraint, !usedBoolVars.contains(v) {
-      return nil
-    } else if case let .expr(.var(v), assuming: cond, origin, stack) = constraint, !usedBoolVars.contains(v) {
-      return exprs[v].map{ .expr($0, assuming: cond, origin, stack) } ?? constraint
-    }
-    return constraint
-  }
+  }, simplifying: false)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -313,7 +273,7 @@ public func simplify(_ expr: CompoundExpr) -> CompoundExpr {
 extension Constraint {
   var complexity: Int {
     switch self {
-    case let .expr(expr, assuming: cond, _, _): return cond.complexity + expr.complexity
+    case let .expr(expr, assuming: _, _, _): return expr.complexity
     }
   }
 }
