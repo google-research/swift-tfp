@@ -117,6 +117,8 @@ You can find some examples to play with in the `Examples/` directory.
 We understand if you don't feel like doing it just yet, so we'll also walk you through a basic case.
 Assume that `example.swift` contains the following:
 ```swift
+import TensorFlow
+
 func randn(_ shape: TensorShape) -> Tensor<Float> {
   let result = Tensor<Float>(randomNormal: shape)
   assert(result.shape == shape)
@@ -128,9 +130,7 @@ func matmul(_ x: Tensor<Float>, _ y: Tensor<Float>) -> Tensor<Float> {
   assert(y.rank == 2)
   assert(x.shape[1] == y.shape[0])
   let r = TensorFlow.matmul(x, y)
-  assert(r.rank == 2)
-  assert(r.shape[0] == x.shape[0])
-  assert(r.shape[1] == y.shape[1])
+	assert(r.shape == [x.shape[0], y.shape[1]])
   return r
 }
 
@@ -142,19 +142,13 @@ func f() -> Tensor<Float> {
 
 the output you'll see will be similar to this:
 ```
-$s4main1f10TensorFlow0B0VySfGyF
-❌ Derived a contradiction from:
+In $s4main1f10TensorFlow0B0VySfGyF:
+❌ Something doesn't fit!
   - 3 = 2
-      Asserted at small.swift:182
+      Asserted at small.swift:12
             |   assert(y.rank == 2)
-        182 |   assert(x.shape[1] == y.shape[0])
+         12 |   assert(x.shape[1] == y.shape[0])
             |   let r = TensorFlow.matmul(x, y)
-
-$s4main5randny10TensorFlow0C0VySfGAC0C5ShapeVF
-✅ Constraints are satisfiable!
-
-$s4main6matmuly10TensorFlow0C0VySfGAF_AFtF
-✅ Constraints are satisfiable!
 ```
 
 Each line starting with "$s" is actually a mangled name of a Swift function in your module, so e.g. `$s4main1f10TensorFlow0B0VySfGyF` really means `main.f() -> TensorFlow.Tensor<Swift.Float>`.
