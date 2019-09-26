@@ -1,3 +1,4 @@
+* Support for `var`s (some sort of mem2reg)
 * Simplification through shape indexing
 * Support for explicit init inside structs
 * More efficient verification (e.g. start with roots and only descend if failures are found)
