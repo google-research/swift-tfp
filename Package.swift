@@ -17,23 +17,21 @@
 import PackageDescription
 
 let package = Package(
-    name: "ShapeChecker",
+    name: "TensorsFittingPerfectly",
     dependencies: [
          .package(url: "https://github.com/tensorflow/swift", .branch("master")),
          // FIXME: We need this for command-line argument parsing only.
          .package(url: "https://github.com/apple/swift-package-manager.git", from: "0.1.0"),
     ],
     targets: [
-        // Targets are the basic building blocks of a package. A target can define a module or a test suite.
-        // Targets can depend on other targets in this package, and on products in packages which this package depends on.
         .target(
-            name: "ShapeChecker",
+            name: "doesitfit",
             dependencies: [
-              "LibShapeChecker",
+              "LibTFP",
               "SIL",
               "SPMUtility"]),
         .target(
-            name: "LibShapeChecker",
+            name: "LibTFP",
             dependencies: [
               "SIL",
               "libz3",
@@ -46,7 +44,7 @@ let package = Package(
                 .apt(["libz3-dev"])
             ]),
         .testTarget(
-            name: "ShapeCheckerTests",
-            dependencies: ["ShapeChecker"]),
+            name: "TFPTests",
+            dependencies: ["LibTFP"]),
     ]
 )

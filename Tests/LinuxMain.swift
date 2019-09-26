@@ -14,8 +14,8 @@
 
 import XCTest
 
-import ShapeCheckerTests
+import TFPTests
 
 var tests = [XCTestCaseEntry]()
-tests += ShapeCheckerTests.allTests()
+tests += TFPTests.allTests()
 XCTMain(tests)

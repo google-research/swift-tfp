@@ -15,13 +15,13 @@
 import SIL
 import XCTest
 import Foundation
-import LibShapeChecker
+import LibTFP
 
 @available(macOS 10.13, *)
 extension XCTestCase {
   func withTemporaryFile(_ f: (URL) -> ()) {
     do {
-      try LibShapeChecker.withTemporaryFile(f)
+      try LibTFP.withTemporaryFile(f)
     } catch {
       return XCTFail("Failed to create temporary directory")
     }
@@ -29,7 +29,7 @@ extension XCTestCase {
 
   func withSIL(forFile: String, _ f: (Module, URL) throws -> ()) {
     do {
-      try LibShapeChecker.withSIL(forFile: forFile) { module, silPath in
+      try LibTFP.withSIL(forFile: forFile) { module, silPath in
         do {
           try f(module, silPath)
         } catch {
