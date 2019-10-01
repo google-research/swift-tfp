@@ -106,6 +106,23 @@ final class IntegrationTests: XCTestCase {
     }
   }
 
+  func assertVerificationResult(_ code: String, _ check: (SolverResult) -> Void) {
+    withSIL(forSource: code) { module, silPath in
+      let analyzer = Analyzer()
+      analyzer.analyze(module)
+      let constraints = instantiate(constraintsOf: "f", inside: analyzer.environment)
+      check(verify(constraints))
+    }
+  }
+
+  func assertRejected(_ code: String, file: StaticString = #file, line: UInt = #line) {
+    assertVerificationResult(code, { assertUnsat($0, file: file, line: line) })
+  }
+
+  func assertAccepted(_ code: String, file: StaticString = #file, line: UInt = #line) {
+    assertVerificationResult(code, { assertSat($0, file: file, line: line) })
+  }
+
   func testPathExploration() {
     let code = """
     @_silgen_name("f")
@@ -115,12 +132,26 @@ final class IntegrationTests: XCTestCase {
       }
     }
     """
-    withSIL(forSource: code) { module, silPath in
-      let analyzer = Analyzer()
-      analyzer.analyze(module)
-      let constraints = instantiate(constraintsOf: "f", inside: analyzer.environment)
-      assertUnsat(verify(constraints))
+    assertRejected(code)
+  }
+
+  func testAssertAfterIf() {
+    let code = """
+    @_silgen_name("f")
+    func f(_ x: Tensor<Float>, _ cond: Bool) {
+      if CONDITION {
+        assert(x.shape[1] == 3)
+      } else {
+        assert(x.shape[0] == 4)
+        assert(x.shape[1] == 8)
+      }
+      assert(x.shape[0] == 2)
     }
+    """
+    assertRejected(code.replacingOccurrences(of: "CONDITION", with: "cond"))
+    // NB: The assert after the if effectively causes the else branch to be dead, so
+    //     we shouldn't emit an error in this case.
+    assertAccepted(code.replacingOccurrences(of: "CONDITION", with: "x.shape[0] == 2"))
   }
 
 
@@ -130,6 +161,7 @@ final class IntegrationTests: XCTestCase {
     ("testFactory", testFactory),
     ("testStruct", testStruct),
     ("testPathExploration", testPathExploration),
+    ("testAssertAfterIf", testAssertAfterIf),
   ]
 }
 
