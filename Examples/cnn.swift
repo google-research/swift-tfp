@@ -75,6 +75,14 @@ func .+<T: Numeric>(_ a: Tensor<T>, _ b: Tensor<T>) -> Tensor<T> {
   return r
 }
 
+// A shortcut for shape assertions
+infix operator ↳
+
+func ↳<T>(_ a: Tensor<T>, _ b: TensorShape) -> Tensor<T> {
+  assert(a.shape == b)
+  return a
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // Tensor factories
 ////////////////////////////////////////////////////////////////////////////////
@@ -194,13 +202,20 @@ struct Model {
   let dense2: Dense
 
   func callAsFunction(_ input: Tensor<Float>) -> Tensor<Float> {
+    let batchSize = input.shape[0]
     let c1 = relu(conv1(input))
+        ↳ [batchSize, 24, 24, 32]
     let p1 = max_pool2d(c1, kernelSize: (2, 2), stride: (2, 2))
+        ↳ [batchSize, 12, 12, 32]
     let c2 = relu(conv2(p1))
+        ↳ [batchSize, 8, 8, 64]
     let p2 = max_pool2d(c2, kernelSize: (2, 2), stride: (2, 2))
+        ↳ [batchSize, 4, 4, 64]
     let d0 = reshape(p2, [p2.shape[0], p2.shape[1] * p2.shape[2] * p2.shape[3]])
     let d1 = dropout(dense1(d0), 0.4)
+        ↳ [batchSize, 1024]
     let d2 = dense2(d1)
+        ↳ [batchSize, 10]
     return d2
   }
 }
