@@ -25,11 +25,13 @@ func alphaNormalize(_ constraints: [Constraint]) -> [Constraint] {
 // Returns a list of constraints in the same order, but with no single
 // constraint appearing twice (only the first occurence is retained.
 public func deduplicate(_ constraints: [Constraint]) -> [Constraint] {
-  var seen = Set<Constraint>()
-  // TODO: Origin and stack don't matter
+  struct BoolExprPair: Hashable { let expr: BoolExpr; let assumption: BoolExpr }
+  var seen = Set<BoolExprPair>()
+  // TODO: prefer asserted constraints to implicit constraints
   return constraints.compactMap {
-    guard !seen.contains($0) else { return nil }
-    seen.insert($0)
+    let key = BoolExprPair(expr: $0.expr, assumption: $0.assumption)
+    guard !seen.contains(key) else { return nil }
+    seen.insert(key)
     return $0
   }
 }

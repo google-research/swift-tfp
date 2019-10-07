@@ -51,12 +51,14 @@ final class TransformsTests: XCTestCase {
       .expr(.intEq(.element(0, of: s0), 4), assuming: .true, .asserted, .top),
       .expr(.intEq(.element(1, of: s0), 2), assuming: .true, .asserted, .top),
       .expr(.listEq(s0, .literal([nil, 2])), assuming: .true, .asserted, .top),
+      .expr(.listEq(s0, .literal([nil, 2])), assuming: .intEq(.element(1, of: s0), 2), .asserted, .top),
       .expr(.intEq(.element(1, of: s0), 2), assuming: .true, .asserted, .top),
       .expr(.listEq(s0, .literal([nil, 2])), assuming: .true, .asserted, .top),
     ]), [
       .expr(.intEq(.element(1, of: s0), 2), assuming: .true, .asserted, .top),
       .expr(.intEq(.element(0, of: s0), 4), assuming: .true, .asserted, .top),
       .expr(.listEq(s0, .literal([nil, 2])), assuming: .true, .asserted, .top),
+      .expr(.listEq(s0, .literal([nil, 2])), assuming: .intEq(.element(1, of: s0), 2), .asserted, .top),
     ])
   }
 
