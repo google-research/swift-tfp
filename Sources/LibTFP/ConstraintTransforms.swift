@@ -249,7 +249,7 @@ public func simplify(_ expr: BoolExpr) -> BoolExpr {
   case .var(_): return expr
   case let .not(.not(subexpr)): return simplify(subexpr)
   case let .not(subexpr): return .not(simplify(subexpr))
-  // TODO: Collapse and/or trees and filter out true/false
+  // TODO(#20): Collapse and/or trees and filter out true/false
   case let .and(subexprs): return .and(subexprs.map(simplify))
   case let .or(subexprs): return .or(subexprs.map(simplify))
   case let .intEq(lhs, rhs): return .intEq(simplify(lhs), simplify(rhs))

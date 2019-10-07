@@ -156,7 +156,7 @@ fileprivate class interpret {
 
   func interpret(_ block: Block) -> Bool {
     // NB: We sort the conditions to make sure that this process is deterministic.
-    // TODO: Sort by a cheaper key.
+    // TODO(#18): Sort by a cheaper key.
     let pathCondition = pathConditions[block.identifier].sorted(by: { $0.description < $1.description })
                                                         .reduce(.false, ||)
     var instructions = block.operatorDefs.makeIterator()
@@ -346,8 +346,8 @@ fileprivate class interpret {
       case let .switchEnum(_, cases):
         // We don't really know too much about enums right now, so we simply treat each branch as
         // being independent, and don't learn anything from the condition.
-        // TODO: Unloop already eliminates those and makes it possible for us to realize that those
-        //       branches are exclusive.
+        // TODO(#17): Unloop already eliminates those and makes it possible for us to realize that those
+        //            branches are exclusive.
         for c in cases {
           switch c {
           case let .case(_, label): fallthrough
@@ -357,9 +357,10 @@ fileprivate class interpret {
         }
         // NB: No jump, because we don't know how to unpack the enum.
         return true
-      // TODO: Should we simply discard all constraints that appear in this block??
-      //       I guess in this case we should also discard everything that's postdominated by it...
-      //       This should be fixed with some kind of cfg preprocessing.
+      // TODO(#16):
+      //     Should we simply discard all constraints that appear in this block??
+      //     I guess in this case we should also discard everything that's postdominated by it...
+      //     This should be fixed with some kind of cfg preprocessing.
       case .unreachable: return true
       case .unknown(_):
         warn("Analysis aborted due to an unsupported block terminator: \(block.terminatorDef)",

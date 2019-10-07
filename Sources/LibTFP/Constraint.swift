@@ -49,7 +49,7 @@ public indirect enum IntExpr: Hashable, ExpressibleByIntegerLiteral {
   case `var`(IntVar)
   case literal(Int)
   case length(of: ListExpr)
-  // TODO: Accept int expressions instead of literals only?
+  // TODO(#15): Accept int expressions instead of literals only?
   case element(Int, of: ListExpr)
 
   case add(IntExpr, IntExpr)

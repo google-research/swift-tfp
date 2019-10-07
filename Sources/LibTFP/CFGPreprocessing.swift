@@ -160,10 +160,11 @@ func findLoops(_ blocks: [Block]) -> [Loop] {
 
 // PRECONDITION: induceReducibleCFG(blocks)
 func unloop(_ blocks: [Block]) -> [Block] {
-  // TODO: Make this function more hygenic. It's fine if we assume that
-  //       blocks follow the bbX convention and values are always %X, but
-  //       this is not robust enough for the general case. I guess we could
-  //       just alpha-normalize the inputs.
+  // TODO(#14):
+  //     Make this function more hygenic. It's fine if we assume that
+  //     blocks follow the bbX convention and values are always %X, but
+  //     this is not robust enough for the general case. I guess we could
+  //     just alpha-normalize the inputs.
   let freshSuffix = count(from: 0) .>> String.init
 
   guard var relaxedBlocks = relaxedUnloop(blocks, suffixGenerator: freshSuffix)

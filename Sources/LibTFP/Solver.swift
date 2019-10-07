@@ -78,7 +78,7 @@ func verify(_ originalConstraints: [Constraint]) -> SolverResult {
 }
 
 func doVerify(_ constraints: [Constraint]) -> SolverResult {
-  // TODO: We don't really need to construct the models if there are no holes
+  // TODO(#12): We don't really need to construct the models if there are no holes
   let solver = Z3Context.default.makeSolver()
   var shapeVars = Set<ListVar>()
   var trackers: [String: Constraint] = [:]
@@ -332,10 +332,10 @@ struct Z3Denotation {
   }
 
   private mutating func broadcast(_ lhsExpr: ListExpr, _ rhsExpr: ListExpr) -> TaggedListVar {
-    // TODO: We could be smart in here and encode e.g. a broadcast with
-    //       a literal without using any quantifiers.
-    // TODO: Broadcasting is associative, so we could pool all the broadcasted
-    //       lists and deal with all literals ahead of time.
+    // TODO(#13): We could be smart in here and encode e.g. a broadcast with
+    //            a literal without using any quantifiers.
+    // TODO(#13): Broadcasting is associative, so we could pool all the broadcasted
+    //            lists and deal with all literals ahead of time.
     let lhsVar = materialize(lhsExpr)
     let rhsVar = materialize(rhsExpr)
     let lhs = denote(lhsVar)

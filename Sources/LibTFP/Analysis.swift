@@ -29,7 +29,7 @@ public class Analyzer {
   let supportedStructDecls: Set = [
     "pattern_binding_decl", "var_decl",
     "constructor_decl", "destructor_decl", "func_decl",
-    // TODO: struct/class/enum decl?
+    // TODO(#19): struct/class/enum decl?
   ]
   public func analyze(_ ast: SExpr) {
     guard case let .record("source_file", decls) = ast else {

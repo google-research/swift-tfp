@@ -55,7 +55,7 @@ struct Colors {
   }
 
   static func code(_ code: String) {
-    // TODO: Check isatty
+    // TODO(#11): Check isatty
     print("\u{001B}[\(code)m", terminator: "")
   }
 }
