@@ -296,9 +296,6 @@ struct Z3Denotation {
               return .intEq(lhsExpr, rhsExpr)
             case let (.some(expr), .none): fallthrough
             case let (.none, .some(expr)):
-              // FIXME: This is a bit overzealous, because we don't do any verification
-              //        to determine whether the assertions are statements about lists
-              //        of integers (where having negative elements is fine) or shapes.
               return .intGe(expr, .literal(0))
             case (.none, .none):
               return nil
