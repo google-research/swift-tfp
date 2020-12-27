@@ -19,9 +19,9 @@ import PackageDescription
 let package = Package(
     name: "TensorsFittingPerfectly",
     dependencies: [
-         .package(url: "https://github.com/tensorflow/swift", .branch("master")),
+         .package(url: "https://github.com/tensorflow/swift", .branch("main")),
          // FIXME: We need this for command-line argument parsing only.
-         .package(url: "https://github.com/apple/swift-package-manager.git", from: "0.1.0"),
+         .package(url: "https://github.com/apple/swift-tools-support-core.git", from: "0.1.12"),
     ],
     targets: [
         .target(
@@ -29,7 +29,7 @@ let package = Package(
             dependencies: [
               "LibTFP",
               "SIL",
-              "SPMUtility"]),
+              "SwiftToolsSupport"]),
         .target(
             name: "LibTFP",
             dependencies: [
