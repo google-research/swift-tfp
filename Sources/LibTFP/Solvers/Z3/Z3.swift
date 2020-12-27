@@ -148,7 +148,7 @@ class Z3Model: CustomStringConvertible {
       return nil
     }
     var result: Int64 = 0
-    guard Z3_get_numeral_int64(ctx.ctx, interpretation, &result) else {
+    guard Z3_get_numeral_int64(ctx.ctx, interpretation, &result) != 0 else {
       fatalError("Interpretation does not fit into an int64")
     }
     return Int(result)
