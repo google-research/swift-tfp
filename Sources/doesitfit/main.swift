@@ -14,7 +14,7 @@
 
 @testable import LibTFP
 import SIL
-import SPMUtility
+import TSCUtility
 
 // TODO: Would it be safe to strip all the assumptions in the core?
 //       If the cores are guaranteed to be _minimal_ then I think so,
